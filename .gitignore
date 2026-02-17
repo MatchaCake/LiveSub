@@ -1,0 +1,15 @@
+# Binary
+livesub
+
+# Config (may contain API keys / cookies)
+config.yaml
+configs/*.yaml
+!configs/*.example.yaml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
