@@ -1,0 +1,172 @@
+package monitor
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"time"
+)
+
+// LiveStatus represents the state of a Bilibili live room.
+type LiveStatus int
+
+const (
+	StatusOffline  LiveStatus = 0 // 未开播
+	StatusLive     LiveStatus = 1 // 直播中
+	StatusRotation LiveStatus = 2 // 轮播
+)
+
+// RoomState tracks a room's live/offline transitions.
+type RoomState struct {
+	RoomID   int64
+	Status   LiveStatus
+	Title    string
+	WasLive  bool
+	LiveTime string
+}
+
+// BilibiliMonitor watches multiple rooms and reports live/offline transitions.
+type BilibiliMonitor struct {
+	client   *http.Client
+	interval time.Duration
+	rooms    map[int64]*RoomState
+}
+
+func NewBilibiliMonitor(interval time.Duration) *BilibiliMonitor {
+	return &BilibiliMonitor{
+		client:   &http.Client{Timeout: 10 * time.Second},
+		interval: interval,
+		rooms:    make(map[int64]*RoomState),
+	}
+}
+
+// RoomEvent is emitted when a room goes live or offline.
+type RoomEvent struct {
+	RoomID  int64
+	Live    bool   // true=just went live, false=just went offline
+	Title   string
+}
+
+// Watch monitors the given rooms and sends events on transitions.
+// Blocks until context is cancelled.
+func (m *BilibiliMonitor) Watch(ctx context.Context, roomIDs []int64, events chan<- RoomEvent) error {
+	// Init room states
+	for _, id := range roomIDs {
+		m.rooms[id] = &RoomState{RoomID: id}
+	}
+
+	slog.Info("bilibili monitor started", "rooms", len(roomIDs), "interval", m.interval)
+
+	ticker := time.NewTicker(m.interval)
+	defer ticker.Stop()
+
+	// Check immediately on start
+	m.checkAll(ctx, events)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			m.checkAll(ctx, events)
+		}
+	}
+}
+
+func (m *BilibiliMonitor) checkAll(ctx context.Context, events chan<- RoomEvent) {
+	for _, state := range m.rooms {
+		if err := m.checkRoom(ctx, state, events); err != nil {
+			slog.Warn("check room failed", "room", state.RoomID, "err", err)
+		}
+	}
+}
+
+func (m *BilibiliMonitor) checkRoom(ctx context.Context, state *RoomState, events chan<- RoomEvent) error {
+	info, err := m.getRoomInfo(ctx, state.RoomID)
+	if err != nil {
+		return err
+	}
+
+	isLive := info.LiveStatus == 1
+
+	// Transition: offline → live
+	if isLive && !state.WasLive {
+		slog.Info("room went LIVE", "room", state.RoomID, "title", info.Title)
+		state.Title = info.Title
+		events <- RoomEvent{
+			RoomID: state.RoomID,
+			Live:   true,
+			Title:  info.Title,
+		}
+	}
+
+	// Transition: live → offline
+	if !isLive && state.WasLive {
+		slog.Info("room went OFFLINE", "room", state.RoomID)
+		events <- RoomEvent{
+			RoomID: state.RoomID,
+			Live:   false,
+		}
+	}
+
+	state.WasLive = isLive
+	state.Status = LiveStatus(info.LiveStatus)
+	return nil
+}
+
+type roomInfoResp struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    struct {
+		LiveStatus int    `json:"live_status"`
+		Title      string `json:"title"`
+		LiveTime   string `json:"live_time"`
+		UID        int64  `json:"uid"`
+	} `json:"data"`
+}
+
+type roomInfo struct {
+	LiveStatus int
+	Title      string
+	LiveTime   string
+}
+
+func (m *BilibiliMonitor) getRoomInfo(ctx context.Context, roomID int64) (*roomInfo, error) {
+	url := fmt.Sprintf("https://api.live.bilibili.com/room/v1/Room/get_info?room_id=%d", roomID)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) livesub/1.0")
+	req.Header.Set("Referer", "https://live.bilibili.com/")
+
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http get: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+
+	var r roomInfoResp
+	if err := json.Unmarshal(body, &r); err != nil {
+		return nil, fmt.Errorf("parse json: %w", err)
+	}
+
+	if r.Code != 0 {
+		return nil, fmt.Errorf("API error %d: %s", r.Code, r.Message)
+	}
+
+	return &roomInfo{
+		LiveStatus: r.Data.LiveStatus,
+		Title:      r.Data.Title,
+		LiveTime:   r.Data.LiveTime,
+	}, nil
+}

@@ -1,0 +1,24 @@
+google:
+  credentials: "configs/google-service-account.json"
+  stt_language: "ja-JP"         # default source language
+
+gemini:
+  api_key: "your-gemini-api-key"
+  model: "gemini-3.0-flash"
+  target_lang: "zh-CN"          # translate to Chinese
+
+bilibili:
+  sessdata: "your-sessdata-cookie"
+  bili_jct: "your-csrf-token"
+  uid: 12345678
+
+streams:
+  - name: "VTuber A"
+    room_id: 12345
+    pw_node: 47                  # run `livesub sources` to find
+    source_lang: "ja-JP"
+
+  - name: "EN Streamer"
+    room_id: 67890
+    pw_node: 52
+    source_lang: "en-US"
