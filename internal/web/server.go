@@ -11,25 +11,47 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/christian-lee/livesub/internal/danmaku"
 )
 
 // RoomState tracks the state of a single room
 type RoomState struct {
-	RoomID  int64  `json:"room_id"`
-	Name    string `json:"name"`
-	Live    bool   `json:"live"`
-	Paused  bool   `json:"paused"`
-	STTText string `json:"stt_text"`
+	RoomID         int64    `json:"room_id"`
+	Name           string   `json:"name"`
+	Live           bool     `json:"live"`
+	Paused         bool     `json:"paused"`
+	STTText        string   `json:"stt_text"`
+	Accounts       []string `json:"accounts"`        // available account names
+	CurrentAccount int      `json:"current_account"`  // index of active account
 }
 
 // RoomControl manages per-room pause/resume state
 type RoomControl struct {
-	mu    sync.RWMutex
-	rooms map[int64]*RoomState
+	mu      sync.RWMutex
+	rooms   map[int64]*RoomState
+	senders map[int64]*danmaku.BilibiliSender
 }
 
 func NewRoomControl() *RoomControl {
-	return &RoomControl{rooms: make(map[int64]*RoomState)}
+	return &RoomControl{
+		rooms:   make(map[int64]*RoomState),
+		senders: make(map[int64]*danmaku.BilibiliSender),
+	}
+}
+
+// SetSender associates a danmaku sender with a room.
+func (rc *RoomControl) SetSender(roomID int64, sender *danmaku.BilibiliSender) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	rc.senders[roomID] = sender
+}
+
+// GetSender returns the sender for a room.
+func (rc *RoomControl) GetSender(roomID int64) *danmaku.BilibiliSender {
+	rc.mu.RLock()
+	defer rc.mu.RUnlock()
+	return rc.senders[roomID]
 }
 
 func (rc *RoomControl) Register(roomID int64, name string) {
@@ -84,7 +106,12 @@ func (rc *RoomControl) GetAll() []RoomState {
 	defer rc.mu.RUnlock()
 	states := make([]RoomState, 0, len(rc.rooms))
 	for _, r := range rc.rooms {
-		states = append(states, *r)
+		s := *r
+		if sender, ok := rc.senders[r.RoomID]; ok {
+			s.Accounts = sender.AccountNames()
+			s.CurrentAccount, _ = sender.CurrentAccount()
+		}
+		states = append(states, s)
 	}
 	sort.Slice(states, func(i, j int) bool {
 		return states[i].RoomID < states[j].RoomID
@@ -135,12 +162,14 @@ func (s *Server) Start() {
 		mux.HandleFunc("/", s.requireAuth(s.handleIndex))
 		mux.HandleFunc("/api/rooms", s.requireAuth(s.handleRooms))
 		mux.HandleFunc("/api/toggle", s.requireAuth(s.handleToggle))
+		mux.HandleFunc("/api/account", s.requireAuth(s.handleSwitchAccount))
 		slog.Info("web auth enabled", "username", s.username)
 	} else {
 		// No auth
 		mux.HandleFunc("/", s.handleIndex)
 		mux.HandleFunc("/api/rooms", s.handleRooms)
 		mux.HandleFunc("/api/toggle", s.handleToggle)
+		mux.HandleFunc("/api/account", s.handleSwitchAccount)
 		slog.Info("web auth disabled (no username/password configured)")
 	}
 
@@ -245,6 +274,35 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRooms(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(s.rc.GetAll())
+}
+
+func (s *Server) handleSwitchAccount(w http.ResponseWriter, r *http.Request) {
+	roomStr := r.URL.Query().Get("room")
+	roomID, err := strconv.ParseInt(roomStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid room", 400)
+		return
+	}
+	idxStr := r.URL.Query().Get("index")
+	idx, err := strconv.Atoi(idxStr)
+	if err != nil {
+		http.Error(w, "invalid index", 400)
+		return
+	}
+	sender := s.rc.GetSender(roomID)
+	if sender == nil {
+		http.Error(w, "room not found", 404)
+		return
+	}
+	ok := sender.SwitchAccount(idx)
+	if !ok {
+		http.Error(w, "invalid account index", 400)
+		return
+	}
+	newIdx, name := sender.CurrentAccount()
+	slog.Info("account switched via web", "room", roomID, "account", name)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"room_id": roomID, "account_index": newIdx, "account_name": name})
 }
 
 func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
@@ -355,6 +413,10 @@ const indexHTML = `<!DOCTYPE html>
   .badge-translating { background: #0f3460; }
   .badge-paused { background: #e9a045; color: #000; }
   .last-text { font-size: 13px; color: #aaa; min-height: 40px; margin-bottom: 15px; word-break: break-all; }
+  .account-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .account-row label { font-size: 13px; color: #aaa; white-space: nowrap; }
+  .account-select { flex: 1; padding: 6px 10px; border: 1px solid #333; border-radius: 6px; background: #0f3460; color: #eee; font-size: 13px; outline: none; cursor: pointer; }
+  .account-select:focus { border-color: #e94560; }
   .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; transition: all 0.2s; }
   .btn-pause { background: #e94560; color: #fff; }
   .btn-resume { background: #4ecca3; color: #000; }
@@ -385,6 +447,14 @@ async function fetchRooms() {
         <span class="badge ${r.paused ? 'badge-paused' : 'badge-translating'}">${r.paused ? '⏸ 已暂停' : '▶️ 翻译中'}</span>
       </div>
       <div class="last-text">${r.stt_text || '等待语音...'}</div>
+      ${r.accounts && r.accounts.length > 1 ? ` + "`" + `
+      <div class="account-row">
+        <label>🔑 账号:</label>
+        <select class="account-select" onchange="switchAccount(${r.room_id}, this.value)">
+          ${r.accounts.map((a, i) => ` + "`" + `<option value="${i}" ${i === r.current_account ? 'selected' : ''}>${a}</option>` + "`" + `).join('')}
+        </select>
+      </div>
+      ` + "`" + ` : ''}
       <button class="btn ${r.paused ? 'btn-resume' : 'btn-pause'}" onclick="toggle(${r.room_id})">
         ${r.paused ? '▶️ 恢复翻译' : '⏸ 暂停翻译'}
       </button>
@@ -394,6 +464,11 @@ async function fetchRooms() {
 
 async function toggle(roomId) {
   await fetch('/api/toggle?room=' + roomId);
+  fetchRooms();
+}
+
+async function switchAccount(roomId, index) {
+  await fetch('/api/account?room=' + roomId + '&index=' + index);
   fetchRooms();
 }
 
