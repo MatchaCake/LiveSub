@@ -13,4 +13,6 @@ type Bot interface {
 	Name() string
 	// Available returns whether the bot is ready to send.
 	Available() bool
+	// MaxMessageLen returns the max rune length per message (0 = no limit).
+	MaxMessageLen() int
 }
