@@ -25,9 +25,9 @@ Real-time live stream translator — captures audio, transcribes with Google STT
 ## Architecture
 
 ```
-  ┌─── Agent (per streamer) ─────────────────────────────────────┐
+  ┌─── Agent (per streamer) ──────────────────────────────────────┐
   │                                                               │
-  │  Bilibili API ──→ ffmpeg (PCM) ──→ Google STT                │
+  │  Bilibili API ──→ ffmpeg (PCM) ──→ Google STT                 │
   │                                        │                      │
   │                                   resultsCh                   │
   │                              Translation Pool                 │
