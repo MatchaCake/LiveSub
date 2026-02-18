@@ -32,9 +32,10 @@ type OutputState struct {
 
 // Controller receives translations from the Agent and routes them to bots.
 type Controller struct {
-	pool    *bot.Pool
-	outputs []config.OutputConfig
-	tlog    *transcript.Logger
+	pool           *bot.Pool
+	outputs        []config.OutputConfig
+	tlog           *transcript.Logger
+	streamerRoomID int64
 
 	mu           sync.RWMutex
 	paused       map[string]bool // output name → paused
@@ -46,7 +47,8 @@ type Controller struct {
 }
 
 // New creates a Controller with the given bot pool and output configuration.
-func New(pool *bot.Pool, outputs []config.OutputConfig, tlog *transcript.Logger) *Controller {
+// streamerRoomID is the room being monitored; used as fallback when output room_id=0.
+func New(pool *bot.Pool, outputs []config.OutputConfig, tlog *transcript.Logger, streamerRoomID int64) *Controller {
 	states := make(map[string]*OutputState)
 	paused := make(map[string]bool)
 	for _, o := range outputs {
@@ -61,11 +63,12 @@ func New(pool *bot.Pool, outputs []config.OutputConfig, tlog *transcript.Logger)
 	}
 
 	return &Controller{
-		pool:         pool,
-		outputs:      outputs,
-		tlog:         tlog,
-		paused:       paused,
-		outputStates: states,
+		pool:           pool,
+		outputs:        outputs,
+		tlog:           tlog,
+		streamerRoomID: streamerRoomID,
+		paused:         paused,
+		outputStates:   states,
 		ch:           make(chan Translation, 100),
 		done:         make(chan struct{}),
 	}
@@ -129,13 +132,15 @@ func (c *Controller) IsAnyPaused() bool {
 	return len(c.paused) > 0
 }
 
-// OutputStates returns the current state of all outputs.
+// OutputStates returns the current state of all outputs in config order.
 func (c *Controller) OutputStates() []OutputState {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	out := make([]OutputState, 0, len(c.outputStates))
-	for _, s := range c.outputStates {
-		out = append(out, *s)
+	out := make([]OutputState, 0, len(c.outputs))
+	for _, o := range c.outputs {
+		if s, ok := c.outputStates[o.Name]; ok {
+			out = append(out, *s)
+		}
 	}
 	return out
 }
@@ -212,15 +217,19 @@ func (c *Controller) run(ctx context.Context) {
 				// Wrap with prefix/suffix
 				wrapped := o.Prefix + txt + o.Suffix
 
-				// Send via bot to output's room (0 = bot's default room)
+				// Send via bot to output's room (0 = streamer's room)
 				b := c.pool.Get(o.Account)
 				if b == nil {
 					slog.Warn("bot not found for output", "output", o.Name, "bot", o.Account)
 					continue
 				}
 
-				slog.Info("sending", "output", o.Name, "bot", b.Name(), "room", o.RoomID, "text", wrapped)
-				if err := b.Send(ctx, o.RoomID, wrapped); err != nil {
+				targetRoom := o.RoomID
+				if targetRoom == 0 {
+					targetRoom = c.streamerRoomID
+				}
+				slog.Info("sending", "output", o.Name, "bot", b.Name(), "room", targetRoom, "text", wrapped)
+				if err := b.Send(ctx, targetRoom, wrapped); err != nil {
 					slog.Error("send failed", "output", o.Name, "bot", b.Name(), "err", err)
 				}
 			}
