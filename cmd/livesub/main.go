@@ -256,7 +256,7 @@ func run(cfgPath string) error {
 					}
 
 					// Create controller for this streamer
-					ctrl := controller.New(pool, sc.Outputs, tlog)
+					ctrl := controller.New(pool, sc.Outputs, tlog, sc.RoomID)
 					ctrl.Start(streamCtx)
 
 					mu.Lock()
