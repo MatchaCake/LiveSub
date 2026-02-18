@@ -160,7 +160,12 @@ func run(cfgPath string) error {
 		}
 	}()
 
-	slog.Info("livesub started", "streams", len(cfg.Streams), "rooms", roomIDs, "web", fmt.Sprintf("http://localhost:%d", webPort))
+	webURL := fmt.Sprintf("http://localhost:%d", webPort)
+	slog.Info("livesub started", "streams", len(cfg.Streams), "rooms", roomIDs, "web", webURL)
+
+	// Auto-open browser
+	openBrowser(webURL)
+
 	return mon.Watch(ctx, roomIDs, events)
 }
 
