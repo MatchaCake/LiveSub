@@ -52,6 +52,16 @@ func (s *Store) migrate() error {
 			PRIMARY KEY (user_id, account_name),
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
+		CREATE TABLE IF NOT EXISTS audit_log (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			ts DATETIME NOT NULL DEFAULT (datetime('now')),
+			user_id INTEGER NOT NULL,
+			username TEXT NOT NULL,
+			action TEXT NOT NULL,
+			detail TEXT,
+			ip TEXT
+		);
+		CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);
 	`)
 	return err
 }
@@ -280,6 +290,49 @@ func (s *Store) ListUserDetails() ([]UserDetail, error) {
 		details = append(details, UserDetail{User: u, Rooms: rooms, Accounts: accounts})
 	}
 	return details, nil
+}
+
+// --- Audit log ---
+
+type AuditEntry struct {
+	ID       int64  `json:"id"`
+	Time     string `json:"time"`
+	UserID   int64  `json:"user_id"`
+	Username string `json:"username"`
+	Action   string `json:"action"`
+	Detail   string `json:"detail"`
+	IP       string `json:"ip"`
+}
+
+// Log records a user action.
+func (s *Store) Log(userID int64, username, action, detail, ip string) {
+	s.db.Exec(
+		`INSERT INTO audit_log (user_id, username, action, detail, ip) VALUES (?, ?, ?, ?, ?)`,
+		userID, username, action, detail, ip,
+	)
+}
+
+// GetAuditLog returns recent audit entries (newest first).
+func (s *Store) GetAuditLog(limit int) ([]AuditEntry, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(
+		`SELECT id, ts, user_id, username, action, COALESCE(detail,''), COALESCE(ip,'') FROM audit_log ORDER BY id DESC LIMIT ?`,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []AuditEntry
+	for rows.Next() {
+		var e AuditEntry
+		rows.Scan(&e.ID, &e.Time, &e.UserID, &e.Username, &e.Action, &e.Detail, &e.IP)
+		entries = append(entries, e)
+	}
+	return entries, nil
 }
 
 func (s *Store) Close() error {

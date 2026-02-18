@@ -206,6 +206,7 @@ func (s *Server) Start() {
 	mux.HandleFunc("/api/admin/user", s.requireAdmin(s.handleAdminUser))
 	mux.HandleFunc("/api/admin/all-rooms", s.requireAdmin(s.handleAdminAllRooms))
 	mux.HandleFunc("/api/admin/all-accounts", s.requireAdmin(s.handleAdminAllAccounts))
+	mux.HandleFunc("/api/admin/audit", s.requireAdmin(s.handleAdminAudit))
 
 	addr := fmt.Sprintf(":%d", s.port)
 	slog.Info("web control panel started", "addr", addr)
@@ -308,6 +309,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 
+	ip := r.Header.Get("X-Forwarded-For")
+	if ip == "" {
+		ip = r.RemoteAddr
+	}
+	s.store.Log(u.ID, u.Username, "登录", "", ip)
 	slog.Info("user logged in", "username", username, "admin", u.IsAdmin, "ip", r.RemoteAddr)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"ok": true, "is_admin": u.IsAdmin})
@@ -365,6 +371,11 @@ func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	paused := s.rc.Toggle(roomID)
+	if paused {
+		s.audit(r, "暂停翻译", fmt.Sprintf("房间 %d", roomID))
+	} else {
+		s.audit(r, "恢复翻译", fmt.Sprintf("房间 %d", roomID))
+	}
 	slog.Info("room toggled", "room", roomID, "paused", paused, "user", u.Username)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"room_id": roomID, "paused": paused})
@@ -406,6 +417,7 @@ func (s *Server) handleSwitchAccount(w http.ResponseWriter, r *http.Request) {
 
 	sender.SwitchAccount(idx)
 	newIdx, name := sender.CurrentAccount()
+	s.audit(r, "切换账号", fmt.Sprintf("房间 %d → %s", roomID, name))
 	slog.Info("account switched", "room", roomID, "account", name, "user", u.Username)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"room_id": roomID, "account_index": newIdx, "account_name": name})
@@ -472,6 +484,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 			s.store.SetUserAccounts(u.ID, req.Accounts)
 		}
 		detail, _ := s.store.GetUserDetail(u.ID)
+		s.audit(r, "创建用户", req.Username)
 		slog.Info("user created", "username", req.Username, "admin", req.IsAdmin)
 		json.NewEncoder(w).Encode(detail)
 
@@ -510,6 +523,7 @@ func (s *Server) handleAdminUser(w http.ResponseWriter, r *http.Request) {
 			s.store.SetUserAccounts(id, *req.Accounts)
 		}
 		detail, _ := s.store.GetUserDetail(id)
+		s.audit(r, "编辑用户", fmt.Sprintf("ID=%d %s", id, detail.Username))
 		json.NewEncoder(w).Encode(detail)
 
 	case "DELETE":
@@ -517,6 +531,7 @@ func (s *Server) handleAdminUser(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"`+err.Error()+`"}`, 500)
 			return
 		}
+		s.audit(r, "删除用户", fmt.Sprintf("ID=%d", id))
 		slog.Info("user deleted", "id", id)
 		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
 
@@ -553,6 +568,38 @@ func (s *Server) handleAdminAllAccounts(w http.ResponseWriter, r *http.Request) 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(names)
+}
+
+// --- Audit ---
+
+func (s *Server) handleAdminAudit(w http.ResponseWriter, r *http.Request) {
+	limitStr := r.URL.Query().Get("limit")
+	limit := 200
+	if n, err := strconv.Atoi(limitStr); err == nil && n > 0 {
+		limit = n
+	}
+	entries, err := s.store.GetAuditLog(limit)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, 500)
+		return
+	}
+	if entries == nil {
+		entries = []auth.AuditEntry{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(entries)
+}
+
+func (s *Server) audit(r *http.Request, action, detail string) {
+	u := s.getUser(r)
+	if u == nil {
+		return
+	}
+	ip := r.Header.Get("X-Forwarded-For")
+	if ip == "" {
+		ip = r.RemoteAddr
+	}
+	s.store.Log(u.ID, u.Username, action, detail, ip)
 }
 
 // --- Pages ---
