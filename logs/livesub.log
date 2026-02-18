@@ -1342,3 +1342,80 @@ time=2026-02-18T11:16:09.018+08:00 level=INFO msg="📊 dispatch" name="Test Str
 time=2026-02-18T11:16:09.869+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src="ある通りの 泣く 声も。" dst=街道上，哭泣声一片。
 time=2026-02-18T11:16:09.869+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=15 text=街道上，哭泣声一片。
 time=2026-02-18T11:16:10.101+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【街道上，哭泣声一片。】
+time=2026-02-18T11:16:39.360+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T11:16:39.361+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T11:16:39.381+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041]
+time=2026-02-18T11:16:39.381+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T11:16:39.491+08:00 level=INFO msg="room went LIVE" room=14988041 title=正在调试
+time=2026-02-18T11:16:39.491+08:00 level=INFO msg="🎙️ room went live, starting pipeline" name="Test Stream" room=14988041 title=正在调试
+time=2026-02-18T11:16:39.567+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
+time=2026-02-18T11:16:39.567+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/507658/live_295893148_2747772.flv
+time=2026-02-18T11:17:33.219+08:00 level=INFO msg="STT final" text="声も出せば愛した幻にくちづけを 助かった。この空に混ざる 夢の星 止まらない。街の日もおぼろが月をどこに咲かせて痛みを 死ぬ 繰り返す。" lang=ja-jp confidence=0.4320584535598755
+time=2026-02-18T11:17:33.219+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.4320584535598755 len=68 musicScore=0.76 text="声も出せば愛した幻にくちづけを 助かった。この空に混ざる 夢の星 止まらない。街の日もおぼろが月をどこに咲かせて痛みを 死ぬ 繰り返す。"
+time=2026-02-18T11:17:34.390+08:00 level=INFO msg="📝 translated" worker=1 name="Test Stream" src="声も出せば愛した幻にくちづけを 助かった。この空に混ざる 夢の星 止まらない。街の日もおぼろが月をどこに咲かせて痛みを 死ぬ 繰り返す。" dst=纵声歌唱，亲吻我爱的幻影，得救了。融进这片天空，化作梦的星辰，无法停止。街道的白昼，朦胧的月亮，在何处绽放痛苦？死亡，轮回不止。
+time=2026-02-18T11:17:34.390+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=0 text=纵声歌唱，亲吻我爱的幻影，得救了。融进这片天空，化作梦的星辰，无法停止。街道的白昼，朦胧的月亮，在何处绽放痛苦？死亡，轮回不止。
+time=2026-02-18T11:17:34.570+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【纵声歌唱，亲吻我爱的幻影，得救了。融进这片天空，化作梦的】
+time=2026-02-18T11:17:39.752+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【星辰，无法停止。街道的白昼，朦胧的月亮，在何处绽放痛苦？】
+time=2026-02-18T11:17:44.937+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【死亡，轮回不止。】
+time=2026-02-18T11:17:57.040+08:00 level=INFO msg="STT final" text=" 日々の中で晒してたのは 春月からための長い 出会えた 幻に。さよなら。" lang=ja-jp confidence=0.5270868539810181
+time=2026-02-18T11:17:57.040+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.5270868539810181 len=36 musicScore=0.41 text=" 日々の中で晒してたのは 春月からための長い 出会えた 幻に。さよなら。"
+time=2026-02-18T11:17:59.855+08:00 level=ERROR msg="translate error" worker=2 name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T11:18:16.529+08:00 level=INFO msg="STT final" text="箱から この空に流れた。月日は花火はそんな風に。" lang=ja-jp confidence=0.7090188264846802
+time=2026-02-18T11:18:16.529+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.7090188264846802 len=24 musicScore=0.75 text="箱から この空に流れた。月日は花火はそんな風に。"
+time=2026-02-18T11:18:17.367+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src="箱から この空に流れた。月日は花火はそんな風に。" dst="从箱子里 飞向这片天空。岁月烟花，亦是如此。"
+time=2026-02-18T11:18:17.367+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=2 text="从箱子里 飞向这片天空。岁月烟花，亦是如此。"
+time=2026-02-18T11:18:17.581+08:00 level=INFO msg="danmaku sent" room=14988041 msg="【从箱子里 飞向这片天空。岁月烟花，亦是如此。】"
+time=2026-02-18T11:18:29.785+08:00 level=INFO msg="STT final" text=" 来た！愛を知る。" lang=ja-jp confidence=0.4054482579231262
+time=2026-02-18T11:18:29.785+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.4054482579231262 len=9 musicScore=0.94 text=" 来た！愛を知る。"
+time=2026-02-18T11:18:40.184+08:00 level=INFO msg="STT final" text=" 世界を知る。" lang=ja-jp confidence=0.5094841122627258
+time=2026-02-18T11:18:40.184+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.5094841122627258 len=7 musicScore=0.30 text=" 世界を知る。"
+time=2026-02-18T11:18:41.194+08:00 level=ERROR msg="translate error" worker=1 name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T11:18:44.428+08:00 level=ERROR msg="translate error" worker=2 name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T11:19:09.524+08:00 level=INFO msg="STT final" text=" ありがとうございまし。" lang=ja-jp confidence=0.5871873497962952
+time=2026-02-18T11:19:09.524+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.5871873497962952 len=12 musicScore=0.93 text=" ありがとうございまし。"
+time=2026-02-18T11:19:10.255+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src=" ありがとうございまし。" dst=谢谢。
+time=2026-02-18T11:19:10.255+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=5 text=谢谢。
+time=2026-02-18T11:19:10.461+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【谢谢。】
+time=2026-02-18T11:19:12.968+08:00 level=INFO msg="STT final" text="まだ 沢城みゆき 言ってる人いるの？" lang=ja-jp confidence=0.6176018714904785
+time=2026-02-18T11:19:12.968+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.6176018714904785 len=18 musicScore=1.00 text="まだ 沢城みゆき 言ってる人いるの？"
+time=2026-02-18T11:19:13.561+08:00 level=ERROR msg="translate error" worker=1 name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T11:19:17.414+08:00 level=INFO msg="STT final" text=" 歌う じゃあ 久しぶりに。" lang=ja-jp confidence=0.5974475741386414
+time=2026-02-18T11:19:17.414+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.5974475741386414 len=14 musicScore=0.99 text=" 歌う じゃあ 久しぶりに。"
+time=2026-02-18T11:19:19.816+08:00 level=ERROR msg="translate error" worker=2 name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T11:19:22.122+08:00 level=INFO msg="STT final" text=" タイトルなんて？" lang=ja-jp confidence=0.9014503359794617
+time=2026-02-18T11:19:22.122+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.9014503359794617 len=9 musicScore=0.62 text=" タイトルなんて？"
+time=2026-02-18T11:19:22.999+08:00 level=ERROR msg="translate error" worker=0 name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T11:19:25.447+08:00 level=INFO msg="STT final" text=" 自分で考えなさいな。" lang=ja-jp confidence=0.9235823750495911
+time=2026-02-18T11:19:25.447+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.9235823750495911 len=11 musicScore=0.95 text=" 自分で考えなさいな。"
+time=2026-02-18T11:19:26.227+08:00 level=INFO msg="📝 translated" worker=1 name="Test Stream" src=" 自分で考えなさいな。" dst=自己动脑想想。
+time=2026-02-18T11:19:26.227+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=9 text=自己动脑想想。
+time=2026-02-18T11:19:26.452+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【自己动脑想想。】
+time=2026-02-18T11:19:45.834+08:00 level=INFO msg="STT final" text=" そうそう、館長 ししやね。2人入ってくれた3人。元彼との思い出が止まらない。どんだけ元カノとに Aimer に も 曲 聞いてたの？質問失礼している。aimer。" lang=ja-jp confidence=0.3762749135494232
+time=2026-02-18T11:19:45.834+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=long_text text=" そうそう、館長 ししやね。2人入ってくれた3人。元彼との思い出が止まらない。どんだけ元カノとに Aimer に も 曲 聞いてたの？質問失礼している。aimer。" len=82 musicScore=0.89 conf=0.3762749135494232
+time=2026-02-18T11:19:49.930+08:00 level=INFO msg="STT final" text=" 失恋している。夢ってどういうこと？失恋している？" lang=ja-jp confidence=0.6244393587112427
+time=2026-02-18T11:19:49.930+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.6244393587112427 len=25 musicScore=0.88 text=" 失恋している。夢ってどういうこと？失恋している？"
+time=2026-02-18T11:19:50.665+08:00 level=INFO msg="📝 translated" worker=2 name="Test Stream" src=" 失恋している。夢ってどういうこと？失恋している？" dst=失恋了，梦是什么意思？我是失恋了吗？
+time=2026-02-18T11:19:50.665+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=10 text=失恋了，梦是什么意思？我是失恋了吗？
+time=2026-02-18T11:19:50.839+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【失恋了，梦是什么意思？我是失恋了吗？】
+time=2026-02-18T11:20:11.422+08:00 level=INFO msg="STT final" text=" 石見とパンティ シーカー。使う入ったの？石井さんもありがとう。獅子くん。じゃあ ペラペラペラペラ。" lang=ja-jp confidence=0.3296182453632355
+time=2026-02-18T11:20:11.422+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" 石見とパンティ シーカー。使う入ったの？石井さんもありがとう。獅子くん。じゃあ ペラペラペラペラ。" len=50 musicScore=0.99 conf=0.3296182453632355
+time=2026-02-18T11:20:16.417+08:00 level=INFO msg="STT final" text=" タイトルなんて？" lang=ja-jp confidence=0.6899184584617615
+time=2026-02-18T11:20:16.417+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.6899184584617615 len=9 musicScore=0.96 text=" タイトルなんて？"
+time=2026-02-18T11:20:20.097+08:00 level=ERROR msg="translate error" worker=0 name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T11:20:23.092+08:00 level=INFO msg="STT final" text=" そんな楽しいひとときに ハム太郎の楽しい。" lang=ja-jp confidence=0.6193771362304688
+time=2026-02-18T11:20:23.092+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.6193771362304688 len=22 musicScore=0.62 text=" そんな楽しいひとときに ハム太郎の楽しい。"
+time=2026-02-18T11:20:24.513+08:00 level=ERROR msg="translate error" worker=1 name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T11:20:28.574+08:00 level=INFO msg="STT final" text="ハム太郎 私にハム太郎 歌わせるの？" lang=ja-jp confidence=0.8687990307807922
+time=2026-02-18T11:20:28.574+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.8687990307807922 len=18 musicScore=0.51 text="ハム太郎 私にハム太郎 歌わせるの？"
+time=2026-02-18T11:20:32.217+08:00 level=ERROR msg="translate error" worker=2 name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T11:20:43.659+08:00 level=INFO msg="STT final" text=" みゆきさんの曲で タイトルなんて自分で考えなさいな。シリコン 漢字は相当 思い込んでるって事は なるほど。" lang=ja-jp confidence=0.4066012501716614
+time=2026-02-18T11:20:43.659+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.4066012501716614 len=54 musicScore=0.69 text=" みゆきさんの曲で タイトルなんて自分で考えなさいな。シリコン 漢字は相当 思い込んでるって事は なるほど。"
+time=2026-02-18T11:20:44.629+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src=" みゆきさんの曲で タイトルなんて自分で考えなさいな。シリコン 漢字は相当 思い込んでるって事は なるほど。" dst=中岛美雪的歌，标题自己想。你对“硅”这个字相当执着啊，原来如此。
+time=2026-02-18T11:20:44.629+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=14 text=中岛美雪的歌，标题自己想。你对“硅”这个字相当执着啊，原来如此。
+time=2026-02-18T11:20:44.852+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【中岛美雪的歌，标题自己想。你对“硅”这个字相当执着啊，原】
+time=2026-02-18T11:20:50.102+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【来如此。】
+time=2026-02-18T11:20:51.423+08:00 level=INFO msg="STT final" text=" なっちゃん 難しかったけど、頑張って 翻訳したえらいえらいすごい！頑張ったね。" lang=ja-jp confidence=0.3296393156051636
+time=2026-02-18T11:20:51.423+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.3296393156051636 len=40 musicScore=0.59 text=" なっちゃん 難しかったけど、頑張って 翻訳したえらいえらいすごい！頑張ったね。"
+time=2026-02-18T11:20:52.727+08:00 level=ERROR msg="translate error" worker=1 name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T11:21:02.118+08:00 level=INFO msg="STT final" text=" でもまず タイトルなんて自分で考えなさいな を久しぶりに撮ろうか。短いからね。パパと聞いてください。行くよ。" lang=ja-jp confidence=0.5515108108520508
+time=2026-02-18T11:21:02.118+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" でもまず タイトルなんて自分で考えなさいな を久しぶりに撮ろうか。短いからね。パパと聞いてください。行くよ。" len=55 musicScore=0.96 conf=0.5515108108520508

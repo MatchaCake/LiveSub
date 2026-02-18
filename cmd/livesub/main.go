@@ -250,14 +250,12 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}()
 
 	// Dispatch STT results to shared pool
-	// 3-layer singing detection:
-	// 1. Text length: consecutive long texts (>50) → singing mode
-	// 2. Hard length cap: single text >80 chars → always skip
-	// 3. FFT spectral: high music score (>0.80) → skip (only when very confident)
+	// 2-layer singing detection:
+	// 1. FFT spectral: high music score (>0.80) → skip (primary)
+	// 2. Text length: consecutive long texts (>50) → singing mode (fallback)
 	const (
 		longTextThreshold  = 50
 		shortTextThreshold = 30
-		hardLengthCap      = 80
 		highMusicScore     = 0.80
 	)
 	var prevLen int
@@ -272,7 +270,10 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 		textLen := len([]rune(result.Text))
 		musicScore := musicDetector.Score()
 
-		// Layer 1: consecutive long text → singing mode
+		// Layer 1: FFT music detection
+		fftSkip := musicScore > highMusicScore
+
+		// Layer 2 (fallback): consecutive long text → singing mode
 		if textLen > longTextThreshold && prevLen > longTextThreshold {
 			if !singing {
 				singing = true
@@ -285,19 +286,11 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 		}
 		prevLen = textLen
 
-		// Layer 2: hard length cap
-		lengthSkip := textLen > hardLengthCap
-
-		// Layer 3: FFT high confidence music detection
-		fftSkip := musicScore > highMusicScore && textLen > 30
-
-		skip := singing || lengthSkip || fftSkip
+		skip := fftSkip || singing
 		if skip {
-			reason := "singing"
-			if lengthSkip {
-				reason = "long_text"
-			} else if fftSkip {
-				reason = "fft"
+			reason := "fft"
+			if !fftSkip {
+				reason = "singing"
 			}
 			slog.Info("🎵 skipping", "name", sc.Name, "reason", reason,
 				"text", result.Text, "len", textLen,
