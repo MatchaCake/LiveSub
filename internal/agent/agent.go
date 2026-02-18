@@ -101,6 +101,14 @@ func (a *Agent) Run(ctx context.Context) error {
 	}()
 
 	// Dispatch STT results to translation pool
+	// Concurrency: N×3 workers where N = number of outputs
+	workerCount := len(sc.Outputs) * 3
+	if workerCount < 3 {
+		workerCount = 3
+	}
+	sem := make(chan struct{}, workerCount)
+	slog.Info("translation pool", "streamer", sc.Name, "outputs", len(sc.Outputs), "workers", workerCount)
+
 	seq := 0
 	var translateWg sync.WaitGroup
 	for result := range resultsCh {
@@ -118,9 +126,10 @@ func (a *Agent) Run(ctx context.Context) error {
 		currentSeq := seq
 		seq++
 
-		// Fan-out translation in a goroutine
+		sem <- struct{}{} // acquire worker slot
 		translateWg.Add(1)
 		go func(s int, text, lang string) {
+			defer func() { <-sem }() // release worker slot
 			defer translateWg.Done()
 			controller.TranslateAndSubmit(ctx, a.ctrl, a.translator, s, text, lang, sc.Outputs)
 		}(currentSeq, result.Text, result.Language)
