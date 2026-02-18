@@ -48,9 +48,10 @@ type Server struct {
 	onStreamerChange func()
 	transcriptDir   string
 
-	mu   sync.RWMutex
-	ctrl *controller.Controller
-	live bool
+	mu     sync.RWMutex
+	ctrl   *controller.Controller
+	live   bool
+	paused map[string]bool // output name → paused (persists across streams)
 }
 
 func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string, cfg *config.Config, cfgPath string) *Server {
@@ -61,6 +62,7 @@ func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string
 		cfg:           cfg,
 		cfgPath:       cfgPath,
 		transcriptDir: transcriptDir,
+		paused:        make(map[string]bool),
 	}
 }
 
@@ -75,10 +77,16 @@ func (s *Server) OnStreamerChange(fn func()) {
 }
 
 // SetController sets the active controller (when stream goes live).
+// Syncs server-level pause state to the new controller.
 func (s *Server) SetController(ctrl *controller.Controller) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ctrl = ctrl
+	if ctrl != nil {
+		for name, paused := range s.paused {
+			ctrl.SetPaused(name, paused)
+		}
+	}
 }
 
 // SetLive updates live status.
@@ -275,7 +283,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if ctrl != nil {
 		state.Outputs = ctrl.OutputStates()
 	} else {
-		// Show configured outputs even when offline
+		// Show configured outputs even when offline, with server-level pause state
 		state.Outputs = make([]controller.OutputState, len(s.cfg.Outputs))
 		for i, o := range s.cfg.Outputs {
 			state.Outputs[i] = controller.OutputState{
@@ -283,6 +291,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 				Platform:   o.Platform,
 				TargetLang: o.TargetLang,
 				BotName:    o.Account,
+				Paused:     s.paused[o.Name],
 			}
 		}
 	}
@@ -308,14 +317,16 @@ func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
 	ctrl := s.ctrl
 	s.mu.RUnlock()
 
-	if ctrl == nil {
-		// No active stream — return current state without error
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"output": outputName, "paused": false, "offline": true})
-		return
-	}
+	// Toggle pause state (server-level, persists across streams)
+	s.mu.Lock()
+	s.paused[outputName] = !s.paused[outputName]
+	paused := s.paused[outputName]
+	s.mu.Unlock()
 
-	paused := ctrl.TogglePause(outputName)
+	// Sync to controller if active
+	if ctrl != nil {
+		ctrl.SetPaused(outputName, paused)
+	}
 	if paused {
 		s.audit(r, "暂停翻译", fmt.Sprintf("输出 %s", outputName))
 	} else {
