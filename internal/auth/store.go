@@ -63,7 +63,7 @@ func (s *Store) migrate() error {
 		);
 		CREATE TABLE IF NOT EXISTS audit_log (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			ts DATETIME NOT NULL DEFAULT (datetime('now')),
+			ts DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
 			user_id INTEGER NOT NULL,
 			username TEXT NOT NULL,
 			action TEXT NOT NULL,
