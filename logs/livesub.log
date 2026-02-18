@@ -3069,3 +3069,11 @@ time=2026-02-18T12:52:26.118+08:00 level=INFO msg="🎙️ room went live, start
 time=2026-02-18T12:52:26.232+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
 time=2026-02-18T12:52:26.232+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/210142/live_295893148_2747772.flv
 time=2026-02-18T12:52:54.878+08:00 level=WARN msg="STT stream ended, reconnecting..." name="Test Stream" err="recv: rpc error: code = OutOfRange desc = Audio Timeout Error: Long duration elapsed without audio. Audio should be sent close to real time."
+time=2026-02-18T12:52:56.096+08:00 level=INFO msg="room went OFFLINE" room=14988041
+time=2026-02-18T12:52:56.097+08:00 level=INFO msg="📴 room went offline, stopping" room=14988041
+time=2026-02-18T12:52:56.097+08:00 level=ERROR msg="audio read error" err="read |0: file already closed"
+time=2026-02-18T12:52:56.097+08:00 level=ERROR msg="audio read error" err="read |0: file already closed"
+time=2026-02-18T12:52:56.100+08:00 level=INFO msg="audio capture stopped"
+time=2026-02-18T12:53:00.906+08:00 level=INFO msg="user logged in" username=admin ip=192.168.1.120:11317
+time=2026-02-18T12:54:04.010+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T12:54:04.010+08:00 level=ERROR msg="run failed" err="context canceled"

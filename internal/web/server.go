@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -85,6 +86,9 @@ func (rc *RoomControl) GetAll() []RoomState {
 	for _, r := range rc.rooms {
 		states = append(states, *r)
 	}
+	sort.Slice(states, func(i, j int) bool {
+		return states[i].RoomID < states[j].RoomID
+	})
 	return states
 }
 
