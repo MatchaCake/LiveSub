@@ -1481,3 +1481,30 @@ time=2026-02-18T11:23:34.177+08:00 level=INFO msg="📝 sending" name="Test Stre
 time=2026-02-18T11:23:34.416+08:00 level=INFO msg="danmaku sent" room=14988041 msg="【吼姆拉呢。等等哦。一次 哈姆太郎】"
 time=2026-02-18T11:23:37.644+08:00 level=INFO msg="STT final" text="なんか元気のない人がいるからね。ハム太郎 歌って元気？付けてもらうか？" lang=ja-jp confidence=0.9538086652755737
 time=2026-02-18T11:23:37.644+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text="なんか元気のない人がいるからね。ハム太郎 歌って元気？付けてもらうか？" len=35 musicScore=0.94 conf=0.9538086652755737
+time=2026-02-18T11:23:43.168+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T11:23:43.168+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T11:23:43.181+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041]
+time=2026-02-18T11:23:43.181+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T11:23:43.386+08:00 level=INFO msg="room went LIVE" room=14988041 title=正在调试
+time=2026-02-18T11:23:43.386+08:00 level=INFO msg="🎙️ room went live, starting pipeline" name="Test Stream" room=14988041 title=正在调试
+time=2026-02-18T11:23:43.468+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
+time=2026-02-18T11:23:43.469+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/965909/live_295893148_2747772.flv
+time=2026-02-18T11:23:44.430+08:00 level=INFO msg="STT final" text="なんか元気のない人がいるからね。ハム太郎 歌って元気？付けてもらうか？" lang=ja-jp confidence=0.9541738033294678
+time=2026-02-18T11:23:44.430+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.9541738033294678 len=35 musicScore=0.41 text="なんか元気のない人がいるからね。ハム太郎 歌って元気？付けてもらうか？"
+time=2026-02-18T11:23:45.256+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src="なんか元気のない人がいるからね。ハム太郎 歌って元気？付けてもらうか？" dst=看有人没精神，要不唱个哈姆太郎打打气？
+time=2026-02-18T11:23:45.256+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=0 text=看有人没精神，要不唱个哈姆太郎打打气？
+time=2026-02-18T11:23:45.528+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【看有人没精神，要不唱个哈姆太郎打打气？】
+time=2026-02-18T11:23:49.968+08:00 level=INFO msg="STT final" text=" 団長 すごーい！ありがとう！凄すぎる！すごく早く回復してたのでサプリメント くれる人 サプリメント。" lang=ja-jp confidence=0.6451531648635864
+time=2026-02-18T11:23:49.968+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" 団長 すごーい！ありがとう！凄すぎる！すごく早く回復してたのでサプリメント くれる人 サプリメント。" len=51 musicScore=0.97 conf=0.6451531648635864
+time=2026-02-18T11:23:53.261+08:00 level=INFO msg="STT final" text=" そんなので元気になっちゃった だめ。" lang=ja-jp confidence=0.818547248840332
+time=2026-02-18T11:23:53.261+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" そんなので元気になっちゃった だめ。" len=19 musicScore=0.89 conf=0.818547248840332
+time=2026-02-18T11:23:59.109+08:00 level=INFO msg="STT final" text=" 待ってね。1回 ほむら。" lang=ja-jp confidence=0.457247257232666
+time=2026-02-18T11:23:59.109+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" 待ってね。1回 ほむら。" len=13 musicScore=0.92 conf=0.457247257232666
+time=2026-02-18T11:24:15.345+08:00 level=INFO msg="STT final" text=" これはカットしてとっとこハム太郎 歌" lang=ja-jp confidence=0.5303462147712708
+time=2026-02-18T11:24:15.345+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" これはカットしてとっとこハム太郎 歌" len=19 musicScore=0.98 conf=0.5303462147712708
+time=2026-02-18T11:24:19.946+08:00 level=INFO msg="STT final" text=" ハム太郎 取っとこうか？" lang=ja-jp confidence=0.48648062348365784
+time=2026-02-18T11:24:19.946+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" ハム太郎 取っとこうか？" len=13 musicScore=0.92 conf=0.48648062348365784
+time=2026-02-18T11:24:27.793+08:00 level=INFO msg="STT final" text=" ハム太郎とっとこうた？" lang=ja-jp confidence=0.22170959413051605
+time=2026-02-18T11:24:27.793+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" ハム太郎とっとこうた？" len=12 musicScore=0.91 conf=0.22170959413051605
+time=2026-02-18T11:24:33.738+08:00 level=INFO msg="STT final" text=" 聞くが良い。" lang=ja-jp confidence=0.49340835213661194
+time=2026-02-18T11:24:33.738+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" 聞くが良い。" len=7 musicScore=0.89 conf=0.49340835213661194
