@@ -8,7 +8,6 @@ Real-time live stream translator — captures audio, transcribes with Google STT
 - **Live detection** — Auto-starts/stops translation when streamers go live (30s polling)
 - **Real-time STT** — Google Cloud Speech-to-Text streaming with auto-reconnect & exponential backoff
 - **AI translation** — Gemini Flash for fast, context-aware translation
-- **Singing detection** — FFT spectral analysis + text length heuristic to skip BGM/lyrics
 - **Multi-account danmaku** — Multiple Bilibili accounts for sending, switch per-room
 - **Web control panel** — Pause/resume translation, manage accounts, download transcripts
 - **User management** — SQLite-backed auth with admin/user roles, per-room permissions
@@ -24,13 +23,9 @@ Real-time live stream translator — captures audio, transcribes with Google STT
 ```
                     ┌─── Stream Pipeline (per room) ──────────────────────┐
                     │                                                      │
-  Bilibili API ──→ ffmpeg (PCM) ──→ AnalyzingReader ──→ Google STT        │
-                                        │                   │              │
-                                   MusicDetector       resultsCh          │
-                                   (FFT/200ms)             │              │
-                                        │          ┌───────▼────────┐     │
-                                        └──────────│ Singing Filter │     │
-                                                   └───────┬────────┘     │
+  Bilibili API ──→ ffmpeg (PCM) ──→ Google STT                             │
+                                                       │                  │
+                                                  resultsCh               │
                                               Shared Translation Pool     │
                                               (N×3 Gemini workers)        │
                                                            │              │
@@ -166,8 +161,6 @@ cmd/livesub/             CLI + pipeline orchestration
 internal/
   audio/
     capture.go           ffmpeg PCM capture
-    analyzer.go          FFT music detection (Cooley-Tukey radix-2)
-    tee_reader.go        PCM tap for analysis
     stream_url.go        Bilibili stream URL fetcher
     pausable_reader.go   Discard audio when paused
   auth/
