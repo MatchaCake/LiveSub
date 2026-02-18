@@ -3212,3 +3212,4 @@ time=2026-02-18T15:27:09.026+08:00 level=INFO msg="livesub started" streams=3 ro
 time=2026-02-18T15:27:09.026+08:00 level=INFO msg="monitor: watching room" room_id=22959964
 time=2026-02-18T15:27:09.026+08:00 level=INFO msg="monitor: watching room" room_id=21396545
 time=2026-02-18T15:27:09.026+08:00 level=INFO msg="monitor: watching room" room_id=14988041
+time=2026-02-18T15:43:02.540+08:00 level=INFO msg="user logged in" username=admin admin=true ip=192.168.1.114:47880
