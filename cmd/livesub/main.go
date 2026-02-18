@@ -247,8 +247,11 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}()
 
 	// Dispatch STT results to shared pool
-	// Skip low-confidence results (singing, BGM, noise)
+	// Low confidence buffering: hold 1 result, if next is also low → discard both
+	// If next is normal → flush held + current
 	const minConfidence = float32(0.75)
+
+	var held *stt.StreamResult // buffered low-confidence result
 
 	seq := 0
 	for result := range resultsCh {
@@ -256,10 +259,36 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 			continue
 		}
 
-		if result.Confidence > 0 && result.Confidence < minConfidence {
-			slog.Info("🎵 skipping low confidence", "name", sc.Name, "text", result.Text,
-				"conf", result.Confidence)
+		isLow := result.Confidence > 0 && result.Confidence < minConfidence
+
+		if isLow {
+			if held != nil {
+				// Two consecutive low → discard both
+				slog.Info("🎵 dropping consecutive low confidence", "name", sc.Name,
+					"dropped", held.Text, "conf1", held.Confidence,
+					"also", result.Text, "conf2", result.Confidence)
+				held = nil
+				// Keep holding: this one becomes the new held
+			}
+			r := result
+			held = &r
 			continue
+		}
+
+		// Current is normal — flush held if any
+		if held != nil {
+			slog.Info("📝 flushing held result", "name", sc.Name, "text", held.Text, "conf", held.Confidence)
+			hDirect := isTargetLang(held.Language, targetLang)
+			pool.submit(translateJob{
+				seq:    seq,
+				text:   held.Text,
+				lang:   held.Language,
+				name:   sc.Name,
+				direct: hDirect,
+				doneCh: doneCh,
+			})
+			seq++
+			held = nil
 		}
 
 		direct := isTargetLang(result.Language, targetLang)
