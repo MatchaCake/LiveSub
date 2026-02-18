@@ -1,5 +1,6 @@
 # Binary
 livesub
+livesub.exe
 
 # Config (may contain API keys / cookies)
 config.yaml
