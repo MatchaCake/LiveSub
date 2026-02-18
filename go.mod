@@ -9,6 +9,8 @@ require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	cloud.google.com/go/longrunning v0.7.0 // indirect
 	cloud.google.com/go/speech v1.29.0 // indirect
+	github.com/MatchaCake/bilibili_dm_lib v0.0.0-20260218065746-5fd262c0eb17 // indirect
+	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
