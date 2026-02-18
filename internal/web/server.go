@@ -86,6 +86,7 @@ func (rc *RoomControl) GetAll() []RoomState {
 type Server struct {
 	rc       *RoomControl
 	port     int
+	mu       sync.RWMutex
 	username string
 	password string
 	sessions sync.Map // token → expiry time
@@ -100,10 +101,23 @@ func NewServer(rc *RoomControl, port int, username, password string) *Server {
 	}
 }
 
+// UpdateAuth updates credentials (hot reload)
+func (s *Server) UpdateAuth(username, password string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.username = username
+	s.password = password
+	slog.Info("auth credentials updated")
+}
+
 func (s *Server) Start() {
 	mux := http.NewServeMux()
 
-	if s.username != "" && s.password != "" {
+	s.mu.RLock()
+	hasAuth := s.username != "" && s.password != ""
+	s.mu.RUnlock()
+
+	if hasAuth {
 		// Auth enabled
 		mux.HandleFunc("/login", s.handleLoginPage)
 		mux.HandleFunc("/api/login", s.handleLogin)
@@ -175,7 +189,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	user := r.FormValue("username")
 	pass := r.FormValue("password")
 
-	if user != s.username || pass != s.password {
+	s.mu.RLock()
+	validUser := s.username
+	validPass := s.password
+	s.mu.RUnlock()
+
+	if user != validUser || pass != validPass {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(401)
 		json.NewEncoder(w).Encode(map[string]string{"error": "用户名或密码错误"})

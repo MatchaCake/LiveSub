@@ -2204,3 +2204,24 @@ time=2026-02-18T12:08:24.754+08:00 level=ERROR msg="run failed" err="context can
 time=2026-02-18T12:08:24.774+08:00 level=INFO msg="web control panel started" addr=:8899
 time=2026-02-18T12:08:24.774+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041] web=http://localhost:8899
 time=2026-02-18T12:08:24.774+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T12:10:55.575+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T12:10:55.575+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T12:10:55.595+08:00 level=INFO msg="web auth enabled" username=admin
+time=2026-02-18T12:10:55.596+08:00 level=INFO msg="web control panel started" addr=:8899
+time=2026-02-18T12:10:55.596+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041] web=http://localhost:8899
+time=2026-02-18T12:10:55.596+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T12:13:03.744+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T12:13:03.744+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T12:13:03.756+08:00 level=INFO msg="web auth enabled" username=admin
+time=2026-02-18T12:13:03.756+08:00 level=INFO msg="web control panel started" addr=:8899
+time=2026-02-18T12:13:03.756+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041] web=http://localhost:8899
+time=2026-02-18T12:13:03.756+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T12:16:19.539+08:00 level=INFO msg="user logged in" username=admin ip=192.168.1.120:12109
+time=2026-02-18T12:16:22.803+08:00 level=INFO msg="room toggled" room=14988041 paused=true
+time=2026-02-18T12:17:24.219+08:00 level=INFO msg="user logged in" username=admin ip=192.168.1.120:12109
+time=2026-02-18T12:21:52.792+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T12:21:52.792+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T12:21:52.811+08:00 level=INFO msg="web auth enabled" username=admin
+time=2026-02-18T12:21:52.811+08:00 level=INFO msg="web control panel started" addr=:8899
+time=2026-02-18T12:21:52.811+08:00 level=INFO msg="livesub started" streams=2 rooms="[14988041 14988041]" web=http://localhost:8899
+time=2026-02-18T12:21:52.811+08:00 level=INFO msg="bilibili monitor started" rooms=2 interval=30s

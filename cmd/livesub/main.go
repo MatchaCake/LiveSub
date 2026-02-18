@@ -52,10 +52,11 @@ type activeStream struct {
 }
 
 func run(cfgPath string) error {
-	cfg, err := config.Load(cfgPath)
+	hotCfg, err := config.NewHotConfig(cfgPath)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	cfg := hotCfg.Get()
 
 	if len(cfg.Streams) == 0 {
 		return fmt.Errorf("no streams configured")
@@ -107,6 +108,13 @@ func run(cfgPath string) error {
 	}
 	webServer := web.NewServer(rc, webPort, cfg.Auth.Username, cfg.Auth.Password)
 	webServer.Start()
+
+	// Hot reload config
+	hotCfg.OnReload(func(newCfg *config.Config) {
+		webServer.UpdateAuth(newCfg.Auth.Username, newCfg.Auth.Password)
+		// Update danmaku settings etc. as needed
+	})
+	hotCfg.Watch()
 
 	// Monitor live status
 	mon := monitor.NewBilibiliMonitor(30 * time.Second)
