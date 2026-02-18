@@ -214,10 +214,52 @@ function renderStatus(data) {
         os.appendChild(ob);
         oc.appendChild(os);
 
-        var ot = document.createElement('div');
-        ot.className = 'output-text';
-        ot.textContent = o.last_text || t('waiting_voice');
-        oc.appendChild(ot);
+        // Pending messages (delay queue)
+        if (o.pending && o.pending.length > 0) {
+          var pLabel = document.createElement('div');
+          pLabel.style.cssText = 'font-size:12px;color:#e94560;margin-top:8px;font-weight:bold';
+          pLabel.textContent = '⏳ ' + t('pending_send') + ' (' + o.pending.length + ')';
+          oc.appendChild(pLabel);
+          o.pending.forEach(function(p) {
+            var pRow = document.createElement('div');
+            pRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin:4px 0;padding:4px 8px;background:#1a1a3e;border-radius:4px;font-size:13px';
+            var remaining = Math.max(0, Math.ceil((p.send_at - Date.now()) / 1000));
+            var pText = document.createElement('span');
+            pText.style.cssText = 'flex:1;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+            pText.textContent = remaining + 's | ' + p.text;
+            pText.title = p.text;
+            pRow.appendChild(pText);
+            var skipBtn = document.createElement('button');
+            skipBtn.style.cssText = 'background:#e94560;color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:12px;white-space:nowrap';
+            skipBtn.textContent = t('skip_btn');
+            skipBtn.onclick = (function(sid, mid) { return function(e) { e.stopPropagation(); skipMsg(sid, mid); }; })(s.name, p.id);
+            pRow.appendChild(skipBtn);
+            oc.appendChild(pRow);
+          });
+        }
+
+        // Recent sent messages
+        if (o.recent && o.recent.length > 0) {
+          var rLabel = document.createElement('div');
+          rLabel.style.cssText = 'font-size:12px;color:#4ecca3;margin-top:8px';
+          rLabel.textContent = '✅ ' + t('recent_sent');
+          oc.appendChild(rLabel);
+          o.recent.slice().reverse().forEach(function(r) {
+            var rRow = document.createElement('div');
+            rRow.style.cssText = 'font-size:12px;color:#888;margin:2px 0;padding:2px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+            rRow.textContent = r;
+            rRow.title = r;
+            oc.appendChild(rRow);
+          });
+        }
+
+        // Show last text if no pending and no recent
+        if ((!o.pending || o.pending.length === 0) && (!o.recent || o.recent.length === 0)) {
+          var ot = document.createElement('div');
+          ot.className = 'output-text';
+          ot.textContent = o.last_text || t('waiting_voice');
+          oc.appendChild(ot);
+        }
 
         var btn = document.createElement('button');
         btn.className = 'btn ' + (o.paused ? 'btn-resume' : 'btn-pause');
@@ -233,6 +275,11 @@ function renderStatus(data) {
     card.appendChild(outputsDiv);
     el.appendChild(card);
   });
+}
+
+async function skipMsg(streamerName, msgId) {
+  await fetch('/api/skip?streamer=' + encodeURIComponent(streamerName) + '&id=' + msgId);
+  fetchStatus();
 }
 
 async function toggle(streamerName, outputName) {
