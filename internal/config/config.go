@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -60,6 +61,17 @@ func Load(path string) (*Config, error) {
 
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
+	}
+
+	// Resolve credentials path relative to config file directory
+	if cfg.Google.Credentials != "" && !filepath.IsAbs(cfg.Google.Credentials) {
+		configDir := filepath.Dir(path)
+		cfg.Google.Credentials = filepath.Join(configDir, cfg.Google.Credentials)
+	}
+
+	// Set GOOGLE_APPLICATION_CREDENTIALS if not already set
+	if cfg.Google.Credentials != "" && os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+		os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", cfg.Google.Credentials)
 	}
 
 	// Fill defaults for streams
