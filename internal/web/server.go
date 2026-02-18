@@ -74,10 +74,14 @@ func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string
 		transcriptDir: transcriptDir,
 		streamers:     make(map[string]*streamerRuntime),
 	}
-	// Init runtime state for each configured streamer
+	// Init runtime state for each configured streamer — all outputs paused by default
 	for _, sc := range cfg.Streamers {
+		p := make(map[string]bool)
+		for _, o := range sc.Outputs {
+			p[o.Name] = true
+		}
 		s.streamers[sc.Name] = &streamerRuntime{
-			paused: make(map[string]bool),
+			paused: p,
 		}
 	}
 	return s
