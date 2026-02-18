@@ -247,13 +247,15 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}()
 
 	// Dispatch STT results to shared pool
-	// Singing detection: consecutive low-confidence results → pause translation
+	// Singing detection: long text bursts with moderate confidence = lyrics
+	// Normal speech: short sentences (<50 chars), singing: long continuous text (>80 chars)
 	const (
-		lowConfThreshold = float32(0.35)
-		pauseAfter       = 3 // consecutive low-conf results to trigger pause
-		resumeAfter      = 2 // consecutive normal results to resume
+		singingLenThreshold = 80  // rune count: lyrics tend to be very long
+		speechLenThreshold  = 40  // short text = definitely speech
+		pauseAfter          = 2   // consecutive singing-like results to trigger pause
+		resumeAfter         = 2   // consecutive speech-like results to resume
 	)
-	var lowConfCount, highConfCount int
+	var singingCount, speechCount int
 	singing := false
 
 	seq := 0
@@ -262,26 +264,35 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 			continue
 		}
 
-		// Track confidence streaks
-		if result.Confidence > 0 && result.Confidence < lowConfThreshold {
-			lowConfCount++
-			highConfCount = 0
-		} else {
-			highConfCount++
-			lowConfCount = 0
+		textLen := len([]rune(result.Text))
+
+		// Heuristic: singing = long text + lower confidence (lyrics recognized as wall of text)
+		// Speech = short natural sentences
+		isSingingLike := textLen > singingLenThreshold && result.Confidence < 0.75
+		isSpeechLike := textLen < speechLenThreshold || result.Confidence > 0.85
+
+		if isSingingLike {
+			singingCount++
+			speechCount = 0
+		} else if isSpeechLike {
+			speechCount++
+			singingCount = 0
 		}
 
-		if !singing && lowConfCount >= pauseAfter {
+		if !singing && singingCount >= pauseAfter {
 			singing = true
-			slog.Info("🎵 singing detected, pausing translation", "name", sc.Name, "lowConfStreak", lowConfCount)
+			slog.Info("🎵 singing detected, pausing translation", "name", sc.Name,
+				"textLen", textLen, "conf", result.Confidence, "streak", singingCount)
 		}
-		if singing && highConfCount >= resumeAfter {
+		if singing && speechCount >= resumeAfter {
 			singing = false
-			slog.Info("🎤 speech resumed, resuming translation", "name", sc.Name, "highConfStreak", highConfCount)
+			slog.Info("🎤 speech resumed, resuming translation", "name", sc.Name,
+				"textLen", textLen, "conf", result.Confidence, "streak", speechCount)
 		}
 
 		if singing {
-			slog.Debug("🎵 skipping (singing)", "name", sc.Name, "text", result.Text, "conf", result.Confidence)
+			slog.Info("🎵 skipping (singing)", "name", sc.Name, "text", result.Text,
+				"len", textLen, "conf", result.Confidence)
 			continue
 		}
 
