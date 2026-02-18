@@ -150,8 +150,9 @@ func (c *Controller) run(ctx context.Context) {
 
 	// Per-output ordered sender: buffer out-of-order results, send in sequence
 	type outputSender struct {
-		nextSeq int
-		pending map[int]string // seq → text to send
+		nextSeq    int
+		seqCounter int
+		pending    map[int]string // seq → text to send
 	}
 	senders := make(map[string]*outputSender)
 	for _, o := range c.outputs {
@@ -226,8 +227,10 @@ func (c *Controller) run(ctx context.Context) {
 					targetRoom = c.streamerRoomID
 				}
 
-				// Split text into chunks, each wrapped with prefix/suffix
-				chunks := splitWithWrap(txt, o.Prefix, o.Suffix, b.MaxMessageLen())
+				// Split text into chunks, each wrapped with prefix+seqEmoji/suffix
+				seqEmoji := seqEmojis[s.seqCounter%len(seqEmojis)]
+				s.seqCounter++
+				chunks := splitWithWrap(txt, o.Prefix+seqEmoji, o.Suffix, b.MaxMessageLen())
 				for _, chunk := range chunks {
 					slog.Info("sending", "output", o.Name, "bot", b.Name(), "room", targetRoom, "text", chunk)
 					if err := b.Send(ctx, targetRoom, chunk); err != nil {
@@ -278,6 +281,9 @@ func splitWithWrap(text, prefix, suffix string, maxLen int) []string {
 	}
 	return chunks
 }
+
+// seqEmojis are number emojis 0-10 for message sequence display.
+var seqEmojis = []string{"0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"}
 
 // isLangMatch checks if detected language matches a target language code.
 func isLangMatch(detected, target string) bool {
