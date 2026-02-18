@@ -15,10 +15,11 @@ import (
 
 // Account represents a Bilibili account for sending danmaku.
 type Account struct {
-	Name     string
-	SESSDATA string
-	BiliJCT  string
-	UID      int64
+	Name       string
+	SESSDATA   string
+	BiliJCT    string
+	UID        int64
+	DanmakuMax int // per-account max chars (0=use sender default)
 }
 
 // BilibiliSender sends danmaku messages to a Bilibili live room.
@@ -121,16 +122,28 @@ func (s *BilibiliSender) getCredentials() (sessdata, biliJCT string) {
 	return a.SESSDATA, a.BiliJCT
 }
 
+// getMaxLength returns the effective max length for the current account.
+func (s *BilibiliSender) getMaxLength() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.accounts) > 0 {
+		if m := s.accounts[s.current].DanmakuMax; m > 0 {
+			return m
+		}
+	}
+	if s.MaxLength > 0 {
+		return s.MaxLength
+	}
+	return 20
+}
+
 // Send sends a danmaku message to the live room, wrapped in 【】.
 // Long messages are split into multiple danmaku.
 func (s *BilibiliSender) Send(msg string) error {
 	wrapped := "【" + msg + "】"
 	runes := []rune(wrapped)
 
-	maxLen := s.MaxLength
-	if maxLen == 0 {
-		maxLen = 20
-	}
+	maxLen := s.getMaxLength()
 
 	if len(runes) <= maxLen {
 		return s.sendOne(wrapped)

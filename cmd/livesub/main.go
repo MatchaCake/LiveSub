@@ -177,6 +177,7 @@ func run(cfgPath string) error {
 						accounts = append(accounts, danmaku.Account{
 							Name: acc.Name, SESSDATA: acc.SESSDATA,
 							BiliJCT: acc.BiliJCT, UID: acc.UID,
+							DanmakuMax: acc.DanmakuMax,
 						})
 					}
 					sender.SetAccounts(accounts)
@@ -281,10 +282,11 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	// Add extra accounts from config
 	for _, acc := range cfg.Bilibili.Accounts {
 		sender.AddAccount(danmaku.Account{
-			Name:     acc.Name,
-			SESSDATA: acc.SESSDATA,
-			BiliJCT:  acc.BiliJCT,
-			UID:      acc.UID,
+			Name:       acc.Name,
+			SESSDATA:   acc.SESSDATA,
+			BiliJCT:    acc.BiliJCT,
+			UID:        acc.UID,
+			DanmakuMax: acc.DanmakuMax,
 		})
 	}
 	rc.SetSender(sc.RoomID, sender)
