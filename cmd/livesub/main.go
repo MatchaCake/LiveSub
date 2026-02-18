@@ -140,7 +140,7 @@ func run(cfgPath string) error {
 	}
 
 	// Web server
-	webServer := web.NewServer(pool, webPort, authStore, transcriptDir, cfg)
+	webServer := web.NewServer(pool, webPort, authStore, transcriptDir, cfg, cfgPath)
 
 	// Register callbacks
 	webServer.OnAccountChange(syncDBBots)

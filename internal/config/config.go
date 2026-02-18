@@ -40,6 +40,7 @@ type OutputConfig struct {
 	Platform   string `yaml:"platform"`    // "bilibili"
 	TargetLang string `yaml:"target_lang"` // empty = send source text (no translation)
 	Account    string `yaml:"account"`     // bot name reference
+	RoomID     int64  `yaml:"room_id"`     // 0 = use streamer's room_id
 	Prefix     string `yaml:"prefix"`
 	Suffix     string `yaml:"suffix"`
 }
@@ -119,4 +120,16 @@ func Load(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// Save writes the config back to the given path.
+func Save(path string, cfg *Config) error {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	return nil
 }
