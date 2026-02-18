@@ -44,7 +44,8 @@ type Server struct {
 	cfg             *config.Config
 	cfgPath         string
 	sessions        sync.Map // token → session
-	onAccountChange func()
+	onAccountChange  func()
+	onStreamerChange func()
 	transcriptDir   string
 
 	mu   sync.RWMutex
@@ -66,6 +67,11 @@ func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string
 // OnAccountChange registers a callback when bilibili accounts change.
 func (s *Server) OnAccountChange(fn func()) {
 	s.onAccountChange = fn
+}
+
+// OnStreamerChange registers a callback when streamer config changes.
+func (s *Server) OnStreamerChange(fn func()) {
+	s.onStreamerChange = fn
 }
 
 // SetController sets the active controller (when stream goes live).
@@ -303,7 +309,9 @@ func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
 	s.mu.RUnlock()
 
 	if ctrl == nil {
-		http.Error(w, `{"error":"no active stream"}`, 400)
+		// No active stream — return current state without error
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"output": outputName, "paused": false, "offline": true})
 		return
 	}
 
@@ -694,6 +702,9 @@ func (s *Server) handleAdminStreamer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.store.Log(0, "admin", "update_streamer", fmt.Sprintf("room=%d name=%s", req.RoomID, req.Name), r.RemoteAddr)
+	if s.onStreamerChange != nil {
+		go s.onStreamerChange()
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
 }
 

@@ -156,8 +156,6 @@ func run(cfgPath string) error {
 	})
 	hotCfg.Watch()
 
-	webServer.Start()
-
 	// Monitor live status
 	mon := stream.NewMonitor(stream.WithMonitorInterval(30 * time.Second))
 	monEvents, err := mon.Watch(ctx, []int64{cfg.Streamer.RoomID})
@@ -169,9 +167,40 @@ func run(cfgPath string) error {
 		cancel context.CancelFunc
 	}
 	var (
-		mu     sync.Mutex
-		active *activeStream
+		mu            sync.Mutex
+		active        *activeStream
+		currentRoomID = cfg.Streamer.RoomID
 	)
+
+	// Register streamer change callback
+	webServer.OnStreamerChange(func() {
+		newCfg := hotCfg.Get()
+		mu.Lock()
+		oldRoom := currentRoomID
+		newRoom := newCfg.Streamer.RoomID
+		if newRoom == oldRoom {
+			mu.Unlock()
+			return
+		}
+		// Stop current stream if active
+		if active != nil {
+			slog.Info("stopping current stream for room switch", "old", oldRoom, "new", newRoom)
+			active.cancel()
+			active = nil
+		}
+		currentRoomID = newRoom
+		mu.Unlock()
+
+		webServer.SetLive(false)
+		webServer.SetController(nil)
+
+		// Switch monitor rooms
+		mon.RemoveRoom(oldRoom)
+		mon.AddRoom(newRoom)
+		slog.Info("switched monitor to new room", "old", oldRoom, "new", newRoom)
+	})
+
+	webServer.Start()
 
 	go func() {
 		for ev := range monEvents {
