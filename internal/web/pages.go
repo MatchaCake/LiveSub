@@ -149,7 +149,9 @@ async function fetchStatus() {
 
 function renderStatus(data) {
   var el = document.getElementById('content');
-  var streamers = data.streamers || [];
+  var streamers = (data.streamers || []).slice().sort(function(a, b) {
+    return (a.room_id || 0) - (b.room_id || 0);
+  });
 
   if (streamers.length === 0) {
     el.textContent = t('no_streamers');
