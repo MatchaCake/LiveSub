@@ -12,11 +12,11 @@ import (
 	"syscall"
 	"time"
 
+	stream "github.com/MatchaCake/bilibili_stream_lib"
 	"github.com/christian-lee/livesub/internal/audio"
 	"github.com/christian-lee/livesub/internal/auth"
 	"github.com/christian-lee/livesub/internal/config"
 	"github.com/christian-lee/livesub/internal/danmaku"
-	"github.com/christian-lee/livesub/internal/monitor"
 	"github.com/christian-lee/livesub/internal/stt"
 	"github.com/christian-lee/livesub/internal/transcript"
 	"github.com/christian-lee/livesub/internal/translate"
@@ -205,8 +205,8 @@ func run(cfgPath string) error {
 	syncAccountsToSenders() // initial sync so web UI shows accounts before any stream goes live
 
 	// Monitor live status
-	mon := monitor.NewBilibiliMonitor(30 * time.Second)
-	events := make(chan monitor.RoomEvent, 10)
+	mon := stream.NewMonitor(stream.WithMonitorInterval(30 * time.Second))
+	var monEvents <-chan stream.RoomEvent
 
 	// applyStreamChanges diffs streamMap against freshly-merged streams,
 	// stopping removed streams and registering added ones.
@@ -243,11 +243,11 @@ func run(cfgPath string) error {
 		streamMap = newStreamMap
 		mu.Unlock()
 
-		if len(removedIDs) > 0 {
-			mon.RemoveRooms(removedIDs, events)
+		for _, id := range removedIDs {
+			mon.RemoveRoom(id)
 		}
-		if len(addedIDs) > 0 {
-			mon.AddRooms(addedIDs)
+		for _, id := range addedIDs {
+			mon.AddRoom(id)
 		}
 		slog.Info("streams updated", "total", len(newStreamMap), "added", len(addedIDs), "removed", len(removedIDs))
 	}
@@ -267,9 +267,19 @@ func run(cfgPath string) error {
 	})
 	hotCfg.Watch()
 
+	// Start monitor
+	roomIDs := make([]int64, 0, len(streamMap))
+	for id := range streamMap {
+		roomIDs = append(roomIDs, id)
+	}
+	monEvents, err = mon.Watch(ctx, roomIDs)
+	if err != nil {
+		return fmt.Errorf("start monitor: %w", err)
+	}
+
 	// Event handler
 	go func() {
-		for ev := range events {
+		for ev := range monEvents {
 			mu.Lock()
 			rc.SetLive(ev.RoomID, ev.Live)
 
@@ -316,30 +326,25 @@ func run(cfgPath string) error {
 		}
 	}()
 
-	roomIDs := make([]int64, 0, len(streamMap))
-	for id := range streamMap {
-		roomIDs = append(roomIDs, id)
-	}
-
 	webURL := fmt.Sprintf("http://localhost:%d", webPort)
 	slog.Info("livesub started", "streams", len(streamMap), "rooms", roomIDs, "web", webURL)
 
 	openBrowser(webURL)
 
-	return mon.Watch(ctx, roomIDs, events)
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, translator *translate.GeminiTranslator, pool *translatePool, rc *web.RoomControl, syncAccounts func(), transcriptBaseDir string) error {
 	// 1. Get live stream URL
-	streamURL, err := audio.GetBilibiliStreamURL(sc.RoomID)
+	streamURL, err := stream.GetStreamURL(ctx, sc.RoomID)
 	if err != nil {
 		return fmt.Errorf("get stream url: %w", err)
 	}
 	slog.Info("got stream URL", "name", sc.Name, "room", sc.RoomID)
 
 	// 2. Audio capture via ffmpeg
-	capturer := audio.NewCapturer()
-	audioReader, err := capturer.Start(ctx, streamURL)
+	audioReader, err := stream.CaptureAudio(ctx, streamURL, nil)
 	if err != nil {
 		return fmt.Errorf("start audio: %w", err)
 	}
