@@ -17,6 +17,7 @@ import (
 	"github.com/christian-lee/livesub/internal/monitor"
 	"github.com/christian-lee/livesub/internal/stt"
 	"github.com/christian-lee/livesub/internal/translate"
+	"github.com/christian-lee/livesub/internal/web"
 )
 
 func main() {
@@ -87,13 +88,25 @@ func run(cfgPath string) error {
 	pool := newTranslatePool(ctx, translator, poolSize)
 	defer pool.close()
 
+	// Room control (pause/resume per room)
+	rc := web.NewRoomControl()
+
 	// Build room → stream config mapping
 	streamMap := make(map[int64]config.StreamConfig)
 	roomIDs := make([]int64, 0, len(cfg.Streams))
 	for _, sc := range cfg.Streams {
 		streamMap[sc.RoomID] = sc
 		roomIDs = append(roomIDs, sc.RoomID)
+		rc.Register(sc.RoomID, sc.Name)
 	}
+
+	// Start web control panel
+	webPort := cfg.WebPort
+	if webPort == 0 {
+		webPort = 8899
+	}
+	webServer := web.NewServer(rc, webPort)
+	webServer.Start()
 
 	// Monitor live status
 	mon := monitor.NewBilibiliMonitor(30 * time.Second)
@@ -107,6 +120,8 @@ func run(cfgPath string) error {
 	go func() {
 		for ev := range events {
 			mu.Lock()
+			rc.SetLive(ev.RoomID, ev.Live)
+
 			if ev.Live {
 				if _, running := active[ev.RoomID]; running {
 					mu.Unlock()
@@ -126,7 +141,7 @@ func run(cfgPath string) error {
 				mu.Unlock()
 
 				go func(sc config.StreamConfig, streamCtx context.Context, streamCancel context.CancelFunc) {
-					if err := runStream(streamCtx, cfg, sc, translator, pool); err != nil {
+					if err := runStream(streamCtx, cfg, sc, translator, pool, rc); err != nil {
 						slog.Error("stream ended", "name", sc.Name, "err", err)
 					}
 					streamCancel()
@@ -145,11 +160,11 @@ func run(cfgPath string) error {
 		}
 	}()
 
-	slog.Info("livesub started", "streams", len(cfg.Streams), "rooms", roomIDs)
+	slog.Info("livesub started", "streams", len(cfg.Streams), "rooms", roomIDs, "web", fmt.Sprintf("http://localhost:%d", webPort))
 	return mon.Watch(ctx, roomIDs, events)
 }
 
-func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, translator *translate.GeminiTranslator, pool *translatePool) error {
+func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, translator *translate.GeminiTranslator, pool *translatePool, rc *web.RoomControl) error {
 	// 1. Get live stream URL
 	streamURL, err := audio.GetBilibiliStreamURL(sc.RoomID)
 	if err != nil {
@@ -157,16 +172,13 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}
 	slog.Info("got stream URL", "name", sc.Name, "room", sc.RoomID)
 
-	// 2. Audio capture via ffmpeg + music detection
+	// 2. Audio capture via ffmpeg
 	capturer := audio.NewCapturer()
-	rawReader, err := capturer.Start(ctx, streamURL)
+	audioReader, err := capturer.Start(ctx, streamURL)
 	if err != nil {
 		return fmt.Errorf("start audio: %w", err)
 	}
-	defer rawReader.Close()
-
-	musicDetector := audio.NewMusicDetector(16000)
-	audioReader := audio.NewAnalyzingReader(rawReader, musicDetector)
+	defer audioReader.Close()
 
 	// 3. STT
 	sttClient, err := stt.NewGoogleSTT(ctx, sc.SourceLang, sc.AltLangs)
@@ -241,6 +253,11 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 				if text == "" {
 					continue
 				}
+				// Check pause before sending
+				if rc.IsPaused(sc.RoomID) {
+					slog.Info("⏸ paused, dropping", "name", sc.Name, "text", text)
+					continue
+				}
 				slog.Info("📝 sending", "name", sc.Name, "seq", nextSeq-1, "text", text)
 				if err := sender.Send(text); err != nil {
 					slog.Error("danmaku error", "name", sc.Name, "err", err)
@@ -250,52 +267,22 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}()
 
 	// Dispatch STT results to shared pool
-	// 2-layer singing detection:
-	// 1. FFT spectral: high music score (>0.80) → skip (primary)
-	// 2. Text length: consecutive long texts (>50) → singing mode (fallback)
-	const (
-		longTextThreshold  = 50
-		shortTextThreshold = 30
-		highMusicScore     = 0.55
-	)
-	var prevLen int
-	singing := false
-
 	seq := 0
 	for result := range resultsCh {
 		if !result.IsFinal {
 			continue
 		}
 
-		textLen := len([]rune(result.Text))
-		musicScore := musicDetector.Score()
+		// Update last text for web UI
+		rc.SetLastText(sc.RoomID, result.Text)
 
-		// Enter singing mode: FFT high AND long text (both required)
-		// Fast speech = long text but low FFT → won't trigger
-		// Singing = long text AND high FFT → triggers
-		if !singing && musicScore > highMusicScore && textLen > longTextThreshold {
-			singing = true
-			slog.Info("🎵 singing mode ON", "name", sc.Name,
-				"musicScore", fmt.Sprintf("%.2f", musicScore), "len", textLen)
-		}
-		// Exit only on consecutive short texts
-		if singing && textLen < shortTextThreshold && prevLen < shortTextThreshold {
-			singing = false
-			slog.Info("🎤 singing mode OFF", "name", sc.Name, "curLen", textLen, "prevLen", prevLen)
-		}
-		prevLen = textLen
-
-		if singing {
-			slog.Info("🎵 skipping", "name", sc.Name, "reason", "singing",
-				"text", result.Text, "len", textLen,
-				"musicScore", fmt.Sprintf("%.2f", musicScore),
-				"conf", result.Confidence)
+		// Check pause before translating (save API calls)
+		if rc.IsPaused(sc.RoomID) {
 			continue
 		}
 
 		slog.Info("📊 dispatch", "name", sc.Name,
-			"conf", result.Confidence, "len", textLen,
-			"musicScore", fmt.Sprintf("%.2f", musicScore),
+			"conf", result.Confidence, "len", len([]rune(result.Text)),
 			"text", result.Text)
 
 		direct := isTargetLang(result.Language, targetLang)
