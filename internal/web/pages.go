@@ -625,6 +625,7 @@ function renderStreamersTable() {
 
 function renderStreamerSelect() {
   var sel = document.getElementById('outputStreamerSelect');
+  var prev = sel.value; // remember current selection
   sel.textContent = '';
   allStreamers.forEach(function(s) {
     var opt = document.createElement('option');
@@ -632,6 +633,7 @@ function renderStreamerSelect() {
     opt.textContent = s.name + ' (#' + s.room_id + ')';
     sel.appendChild(opt);
   });
+  if (prev) sel.value = prev; // restore selection
 }
 
 async function saveStreamer() {
