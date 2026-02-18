@@ -1,0 +1,19 @@
+name: SLSA Go Releaser
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  build:
+    permissions:
+      id-token: write
+      contents: write
+      actions: read
+    uses: slsa-framework/slsa-github-generator/.github/workflows/builder_go_slsa3.yml@v2.1.0
+    with:
+      go-version-file: "go.mod"
+      config-file: ".slsa-goreleaser.yml"
