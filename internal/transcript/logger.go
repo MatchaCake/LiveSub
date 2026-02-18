@@ -25,16 +25,27 @@ type Logger struct {
 }
 
 // NewLogger creates a transcript logger for a stream session.
+// If a recent file for the same room exists (modified within 1 hour),
+// it resumes appending to that file instead of creating a new one.
 // Files are saved as: <dir>/<room_id>_<name>_<date>_<time>.csv
 func NewLogger(dir string, roomID int64, name string) (*Logger, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create transcript dir: %w", err)
 	}
 
+	safeName := sanitize(name)
+	prefix := fmt.Sprintf("%d_%s_", roomID, safeName)
+
+	// Check for a recent file to resume
+	if l, err := resumeRecent(dir, prefix, roomID, name); err == nil && l != nil {
+		slog.Info("resuming transcript", "path", l.Path())
+		return l, nil
+	}
+
+	// Create new file
 	now := time.Now()
 	session := now.Format("20060102_150405")
-	safeName := sanitize(name)
-	filename := fmt.Sprintf("%d_%s_%s.csv", roomID, safeName, session)
+	filename := fmt.Sprintf("%s%s.csv", prefix, session)
 	path := filepath.Join(dir, filename)
 
 	f, err := os.Create(path)
@@ -64,6 +75,64 @@ func NewLogger(dir string, roomID int64, name string) (*Logger, error) {
 		name:      name,
 		session:   session,
 		startTime: now,
+	}, nil
+}
+
+// resumeRecent finds and reopens the most recent transcript file for a room
+// if it was modified within the last hour.
+func resumeRecent(dir, prefix string, roomID int64, name string) (*Logger, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	cutoff := time.Now().Add(-1 * time.Hour)
+	var bestPath string
+	var bestMod time.Time
+	var bestSession string
+
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), prefix) || !strings.HasSuffix(e.Name(), ".csv") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || info.ModTime().Before(cutoff) {
+			continue
+		}
+		if info.ModTime().After(bestMod) {
+			bestMod = info.ModTime()
+			bestPath = filepath.Join(dir, e.Name())
+			// Extract session from filename: prefix + session + ".csv"
+			s := strings.TrimPrefix(e.Name(), prefix)
+			s = strings.TrimSuffix(s, ".csv")
+			bestSession = s
+		}
+	}
+
+	if bestPath == "" {
+		return nil, nil
+	}
+
+	// Parse startTime from session string (YYYYMMDD_HHMMSS)
+	startTime, err := time.ParseInLocation("20060102_150405", bestSession, time.Now().Location())
+	if err != nil {
+		return nil, err
+	}
+
+	// Open for append
+	f, err := os.OpenFile(bestPath, os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Logger{
+		dir:       dir,
+		file:      f,
+		writer:    csv.NewWriter(f),
+		roomID:    roomID,
+		name:      name,
+		session:   bestSession,
+		startTime: startTime,
 	}, nil
 }
 
