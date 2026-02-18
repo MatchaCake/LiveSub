@@ -1252,3 +1252,93 @@ time=2026-02-18T11:12:40.461+08:00 level=INFO msg="📝 direct" name="Test Strea
 time=2026-02-18T11:12:53.182+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
 time=2026-02-18T11:12:53.182+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
 time=2026-02-18T11:12:53.182+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
+time=2026-02-18T11:12:59.502+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T11:12:59.502+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T11:12:59.520+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041]
+time=2026-02-18T11:12:59.520+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T11:12:59.636+08:00 level=INFO msg="room went LIVE" room=14988041 title=正在调试
+time=2026-02-18T11:12:59.636+08:00 level=INFO msg="🎙️ room went live, starting pipeline" name="Test Stream" room=14988041 title=正在调试
+time=2026-02-18T11:12:59.716+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
+time=2026-02-18T11:12:59.716+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/769238/live_295893148_2747772.flv
+time=2026-02-18T11:13:00.374+08:00 level=INFO msg="STT final" text=思っていた人もいたんだよ。 lang=ja-jp confidence=0.8922450542449951
+time=2026-02-18T11:13:00.374+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.8922450542449951 len=13 text=思っていた人もいたんだよ。
+time=2026-02-18T11:13:00.653+08:00 level=INFO msg="STT final" text=最高ありがとう。 lang=ja-jp confidence=0.3685730993747711
+time=2026-02-18T11:13:00.654+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.3685730993747711 len=8 text=最高ありがとう。
+time=2026-02-18T11:13:01.081+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src=思っていた人もいたんだよ。 dst=也有人这么想过。
+time=2026-02-18T11:13:01.081+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=0 text=也有人这么想过。
+time=2026-02-18T11:13:01.271+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【也有人这么想过。】
+time=2026-02-18T11:13:01.414+08:00 level=INFO msg="📝 translated" worker=2 name="Test Stream" src=最高ありがとう。 dst=非常感谢。
+time=2026-02-18T11:13:01.414+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=1 text=非常感谢。
+time=2026-02-18T11:13:06.479+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【非常感谢。】
+time=2026-02-18T11:13:11.531+08:00 level=INFO msg="STT final" text="まっさらないわ。わからない。ごめん。帰ってきました。私は山に向かったようです。泣いてる 泣かないで大丈夫。大丈夫？茜さすも歌をね。そしたら あかねさす。" lang=ja-jp confidence=0.30130431056022644
+time=2026-02-18T11:13:11.531+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.30130431056022644 len=76 text="まっさらないわ。わからない。ごめん。帰ってきました。私は山に向かったようです。泣いてる 泣かないで大丈夫。大丈夫？茜さすも歌をね。そしたら あかねさす。"
+time=2026-02-18T11:13:12.580+08:00 level=INFO msg="📝 translated" worker=1 name="Test Stream" src="まっさらないわ。わからない。ごめん。帰ってきました。私は山に向かったようです。泣いてる 泣かないで大丈夫。大丈夫？茜さすも歌をね。そしたら あかねさす。" dst=我不知道，抱歉。我回来了，好像是去了山里。别哭别哭，没事的，没事吧？要唱《茜さす》吗，那就唱《茜さす》。
+time=2026-02-18T11:13:12.580+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=2 text=我不知道，抱歉。我回来了，好像是去了山里。别哭别哭，没事的，没事吧？要唱《茜さす》吗，那就唱《茜さす》。
+time=2026-02-18T11:13:12.813+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【我不知道，抱歉。我回来了，好像是去了山里。别哭别哭，没事】
+time=2026-02-18T11:13:18.057+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【的，没事吧？要唱《茜さす》吗，那就唱《茜さす》。】
+time=2026-02-18T11:13:19.500+08:00 level=INFO msg="STT final" text="aimer だね。小説 エリアの方を思い 聞いてて元カノのこと思い出して 今 萎えた。萎えるな。" lang=ja-jp confidence=0.2811608612537384
+time=2026-02-18T11:13:19.501+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.2811608612537384 len=48 text="aimer だね。小説 エリアの方を思い 聞いてて元カノのこと思い出して 今 萎えた。萎えるな。"
+time=2026-02-18T11:13:20.288+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src="aimer だね。小説 エリアの方を思い 聞いてて元カノのこと思い出して 今 萎えた。萎えるな。" dst=是Aimer啊。听到小说区，想起了前女友，瞬间萎了。别萎啊。
+time=2026-02-18T11:13:20.288+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=3 text=是Aimer啊。听到小说区，想起了前女友，瞬间萎了。别萎啊。
+time=2026-02-18T11:13:23.294+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【是Aimer啊。听到小说区，想起了前女友，瞬间萎了。别萎】
+time=2026-02-18T11:13:27.310+08:00 level=INFO msg="STT final" text="まあ 切ない やな。" lang=ja-jp confidence=0.271810919046402
+time=2026-02-18T11:13:27.310+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.271810919046402 len=10 text="まあ 切ない やな。"
+time=2026-02-18T11:13:28.070+08:00 level=INFO msg="📝 translated" worker=2 name="Test Stream" src="まあ 切ない やな。" dst=哎呀，好难受啊。
+time=2026-02-18T11:13:28.504+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【啊。】
+time=2026-02-18T11:13:28.504+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=4 text=哎呀，好难受啊。
+time=2026-02-18T11:13:30.971+08:00 level=INFO msg="STT final" text="なんかあったよな お疲れ。" lang=ja-jp confidence=0.3402835428714752
+time=2026-02-18T11:13:30.971+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.3402835428714752 len=13 text="なんかあったよな お疲れ。"
+time=2026-02-18T11:13:31.742+08:00 level=INFO msg="📝 translated" worker=1 name="Test Stream" src="なんかあったよな お疲れ。" dst=辛苦了，好像发生了什么事。
+time=2026-02-18T11:13:33.916+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【哎呀，好难受啊。】
+time=2026-02-18T11:13:33.916+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=5 text=辛苦了，好像发生了什么事。
+time=2026-02-18T11:13:35.436+08:00 level=INFO msg="STT final" text=" じゃあ 茜さす 行こっか これ！" lang=ja-jp confidence=0.25483354926109314
+time=2026-02-18T11:13:35.436+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.25483354926109314 len=17 text=" じゃあ 茜さす 行こっか これ！"
+time=2026-02-18T11:13:36.259+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src=" じゃあ 茜さす 行こっか これ！" dst=那我们去玩《茜さすセカイでキミと詠う》吧！
+time=2026-02-18T11:13:37.611+08:00 level=INFO msg="STT final" text=" どれが？" lang=ja-jp confidence=0.9014376997947693
+time=2026-02-18T11:13:37.611+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.9014376997947693 len=5 text=" どれが？"
+time=2026-02-18T11:13:38.263+08:00 level=INFO msg="📝 translated" worker=2 name="Test Stream" src=" どれが？" dst=哪个？
+time=2026-02-18T11:13:39.139+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【辛苦了，好像发生了什么事。】
+time=2026-02-18T11:13:39.139+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=6 text=那我们去玩《茜さすセカイでキミと詠う》吧！
+time=2026-02-18T11:13:43.052+08:00 level=INFO msg="STT final" text=" 具合とメロディーじゃない？やつがいいんだけど。" lang=ja-jp confidence=0.5732589960098267
+time=2026-02-18T11:13:43.052+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.5732589960098267 len=24 text=" 具合とメロディーじゃない？やつがいいんだけど。"
+time=2026-02-18T11:13:43.860+08:00 level=INFO msg="📝 translated" worker=1 name="Test Stream" src=" 具合とメロディーじゃない？やつがいいんだけど。" dst=不要太旋律化的，要有律动感的那种。
+time=2026-02-18T11:13:44.347+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【那我们去玩《茜さすセカイでキミと詠う》吧！】
+time=2026-02-18T11:13:44.347+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=7 text=哪个？
+time=2026-02-18T11:13:49.516+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【哪个？】
+time=2026-02-18T11:13:49.516+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=8 text=不要太旋律化的，要有律动感的那种。
+time=2026-02-18T11:13:51.268+08:00 level=INFO msg="STT final" text=" これでいいか？この 伴奏 使うね。" lang=ja-jp confidence=0.768598735332489
+time=2026-02-18T11:13:51.268+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.768598735332489 len=18 text=" これでいいか？この 伴奏 使うね。"
+time=2026-02-18T11:13:52.037+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src=" これでいいか？この 伴奏 使うね。" dst=这样可以吗？我用这个伴奏了。
+time=2026-02-18T11:13:54.740+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【不要太旋律化的，要有律动感的那种。】
+time=2026-02-18T11:13:54.740+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=9 text=这样可以吗？我用这个伴奏了。
+time=2026-02-18T11:13:59.991+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【这样可以吗？我用这个伴奏了。】
+time=2026-02-18T11:14:21.424+08:00 level=INFO msg="STT final" text=" 彼 ハマる街角 駆け抜けてく乾いた。風 伸びた影と 貴重な道 季節を見てた。" lang=ja-jp confidence=0.3961235582828522
+time=2026-02-18T11:14:21.424+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.3961235582828522 len=39 text=" 彼 ハマる街角 駆け抜けてく乾いた。風 伸びた影と 貴重な道 季節を見てた。"
+time=2026-02-18T11:14:23.317+08:00 level=ERROR msg="translate error" worker=2 name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T11:15:04.426+08:00 level=INFO msg="STT final" text="返事のない 向こうへはあっという間 かき消されてしまう。目の開け通り 瞳なり抜けて 今のこと遠く誰もいない場所 気づいていたのに何も知らない。" lang=ja-jp confidence=0.6161102652549744
+time=2026-02-18T11:15:04.426+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.6161102652549744 len=71 text="返事のない 向こうへはあっという間 かき消されてしまう。目の開け通り 瞳なり抜けて 今のこと遠く誰もいない場所 気づいていたのに何も知らない。"
+time=2026-02-18T11:15:05.479+08:00 level=INFO msg="📝 translated" worker=1 name="Test Stream" src="返事のない 向こうへはあっという間 かき消されてしまう。目の開け通り 瞳なり抜けて 今のこと遠く誰もいない場所 気づいていたのに何も知らない。" dst=转瞬消失，无人回应。睁开双眼，穿透瞳孔，此刻身处遥远之地，空无一人，明明早已知晓，却又一无所知。
+time=2026-02-18T11:15:05.479+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=11 text=转瞬消失，无人回应。睁开双眼，穿透瞳孔，此刻身处遥远之地，空无一人，明明早已知晓，却又一无所知。
+time=2026-02-18T11:15:05.740+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【转瞬消失，无人回应。睁开双眼，穿透瞳孔，此刻身处遥远之地】
+time=2026-02-18T11:15:10.963+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【，空无一人，明明早已知晓，却又一无所知。】
+time=2026-02-18T11:15:17.161+08:00 level=INFO msg="STT final" text=霧では何もできなかった。 lang=ja-jp confidence=0.35536321997642517
+time=2026-02-18T11:15:17.161+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.35536321997642517 len=12 text=霧では何もできなかった。
+time=2026-02-18T11:15:18.055+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src=霧では何もできなかった。 dst=雾太大了，什么都做不了。
+time=2026-02-18T11:15:18.055+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=12 text=雾太大了，什么都做不了。
+time=2026-02-18T11:15:18.257+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【雾太大了，什么都做不了。】
+time=2026-02-18T11:15:51.599+08:00 level=INFO msg="STT final" text=" 出会えた 幻にさよならを吐かれさせ、この空に こぼれた夜 朝に手の色 一因のあなたの風に願い。この前 痛み？" lang=ja-jp confidence=0.2955016791820526
+time=2026-02-18T11:15:51.599+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.2955016791820526 len=55 text=" 出会えた 幻にさよならを吐かれさせ、この空に こぼれた夜 朝に手の色 一因のあなたの風に願い。この前 痛み？"
+time=2026-02-18T11:15:52.600+08:00 level=INFO msg="📝 translated" worker=2 name="Test Stream" src=" 出会えた 幻にさよならを吐かれさせ、この空に こぼれた夜 朝に手の色 一因のあなたの風に願い。この前 痛み？" dst=与幻影告别，夜色洒落天空，晨曦染上指尖，愿你的微风吹散一丝疼痛。
+time=2026-02-18T11:15:52.600+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=13 text=与幻影告别，夜色洒落天空，晨曦染上指尖，愿你的微风吹散一丝疼痛。
+time=2026-02-18T11:15:52.897+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【与幻影告别，夜色洒落天空，晨曦染上指尖，愿你的微风吹散一】
+time=2026-02-18T11:15:58.079+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【丝疼痛。】
+time=2026-02-18T11:15:58.270+08:00 level=INFO msg="STT final" text="まださ 足のみゆき って言ってる人いるの？" lang=ja-jp confidence=0.48424482345581055
+time=2026-02-18T11:15:58.270+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.48424482345581055 len=21 text="まださ 足のみゆき って言ってる人いるの？"
+time=2026-02-18T11:15:59.174+08:00 level=INFO msg="📝 translated" worker=1 name="Test Stream" src="まださ 足のみゆき って言ってる人いるの？" dst=还有人叫足立美雪吗？
+time=2026-02-18T11:15:59.174+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=14 text=还有人叫足立美雪吗？
+time=2026-02-18T11:16:03.317+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【还有人叫足立美雪吗？】
+time=2026-02-18T11:16:09.018+08:00 level=INFO msg="STT final" text="ある通りの 泣く 声も。" lang=ja-jp confidence=0.24967797100543976
+time=2026-02-18T11:16:09.018+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.24967797100543976 len=12 text="ある通りの 泣く 声も。"
+time=2026-02-18T11:16:09.869+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src="ある通りの 泣く 声も。" dst=街道上，哭泣声一片。
+time=2026-02-18T11:16:09.869+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=15 text=街道上，哭泣声一片。
+time=2026-02-18T11:16:10.101+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【街道上，哭泣声一片。】
