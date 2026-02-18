@@ -19,6 +19,7 @@ import (
 	"github.com/christian-lee/livesub/internal/danmaku"
 	"github.com/christian-lee/livesub/internal/monitor"
 	"github.com/christian-lee/livesub/internal/stt"
+	"github.com/christian-lee/livesub/internal/transcript"
 	"github.com/christian-lee/livesub/internal/translate"
 	"github.com/christian-lee/livesub/internal/web"
 )
@@ -124,7 +125,8 @@ func run(cfgPath string) error {
 	if webPort == 0 {
 		webPort = 8899
 	}
-	webServer := web.NewServer(rc, webPort, authStore)
+	transcriptBaseDir := filepath.Join(filepath.Dir(cfgPath), "transcripts")
+	webServer := web.NewServer(rc, webPort, authStore, transcriptBaseDir)
 
 	// Sync DB accounts to all active senders
 	syncAccountsToSenders := func() {
@@ -258,7 +260,8 @@ func run(cfgPath string) error {
 				mu.Unlock()
 
 				go func(sc config.StreamConfig, streamCtx context.Context, streamCancel context.CancelFunc) {
-					if err := runStream(streamCtx, hotCfg.Get(), sc, translator, pool, rc, syncAccountsToSenders); err != nil {
+					transcriptDir := filepath.Join(filepath.Dir(cfgPath), "transcripts")
+				if err := runStream(streamCtx, hotCfg.Get(), sc, translator, pool, rc, syncAccountsToSenders, transcriptDir); err != nil {
 						slog.Error("stream ended", "name", sc.Name, "err", err)
 					}
 					streamCancel()
@@ -286,7 +289,7 @@ func run(cfgPath string) error {
 	return mon.Watch(ctx, roomIDs, events)
 }
 
-func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, translator *translate.GeminiTranslator, pool *translatePool, rc *web.RoomControl, syncAccounts func()) error {
+func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, translator *translate.GeminiTranslator, pool *translatePool, rc *web.RoomControl, syncAccounts func(), transcriptBaseDir string) error {
 	// 1. Get live stream URL
 	streamURL, err := audio.GetBilibiliStreamURL(sc.RoomID)
 	if err != nil {
@@ -333,6 +336,16 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	// Sync DB accounts (overwrites with full list including DB accounts)
 	if syncAccounts != nil {
 		syncAccounts()
+	}
+
+	// 5. Transcript logger
+	transcriptDir := transcriptBaseDir
+	tlog, err := transcript.NewLogger(transcriptDir, sc.RoomID, sc.Name)
+	if err != nil {
+		slog.Warn("transcript logger failed, continuing without", "err", err)
+	} else {
+		defer tlog.Close()
+		slog.Info("📄 transcript logging", "path", tlog.Path())
 	}
 
 	// Pipeline: STT → Translate → Send
@@ -382,26 +395,34 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	go func() {
 		defer senderWg.Done()
 		nextSeq := 0
-		pending := make(map[int]string)
+		type pendingEntry struct {
+			text   string
+			source string
+		}
+		pending := make(map[int]pendingEntry)
 		for msg := range doneCh {
-			pending[msg.seq] = msg.text
+			pending[msg.seq] = pendingEntry{text: msg.text, source: msg.source}
 			for {
-				text, ok := pending[nextSeq]
+				entry, ok := pending[nextSeq]
 				if !ok {
 					break
 				}
 				delete(pending, nextSeq)
 				nextSeq++
-				if text == "" {
+				if entry.text == "" {
 					continue
+				}
+				// Log transcript regardless of pause
+				if tlog != nil {
+					tlog.Write(entry.source, entry.text)
 				}
 				// Check pause before sending
 				if rc.IsPaused(sc.RoomID) {
-					slog.Info("⏸ paused, dropping", "name", sc.Name, "text", text)
+					slog.Info("⏸ paused, dropping", "name", sc.Name, "text", entry.text)
 					continue
 				}
-				slog.Info("📝 sending", "name", sc.Name, "seq", nextSeq-1, "text", text)
-				if err := sender.Send(text); err != nil {
+				slog.Info("📝 sending", "name", sc.Name, "seq", nextSeq-1, "text", entry.text)
+				if err := sender.Send(entry.text); err != nil {
 					slog.Error("danmaku error", "name", sc.Name, "err", err)
 				}
 			}
@@ -439,6 +460,7 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 			name:   sc.Name,
 			direct: direct,
 			doneCh: doneCh,
+			source: result.Text,
 		})
 		seq++
 	}
@@ -451,8 +473,9 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 // --- Shared translation pool ---
 
 type translateResult struct {
-	seq  int
-	text string
+	seq    int
+	text   string
+	source string // original STT text
 }
 
 type translateJob struct {
@@ -462,6 +485,7 @@ type translateJob struct {
 	name   string // stream name for logging
 	direct bool
 	doneCh chan<- translateResult
+	source string // original text (same as text for direct)
 }
 
 type translatePool struct {
@@ -479,19 +503,19 @@ func newTranslatePool(ctx context.Context, translator *translate.GeminiTranslato
 			defer p.wg.Done()
 			for job := range p.jobCh {
 				if job.direct {
-					job.doneCh <- translateResult{seq: job.seq, text: job.text}
+					job.doneCh <- translateResult{seq: job.seq, text: job.text, source: job.source}
 					continue
 				}
 				translated, err := translator.Translate(ctx, job.text, job.lang)
 				if err != nil {
 					slog.Error("translate error", "worker", id, "name", job.name, "err", err)
-					job.doneCh <- translateResult{seq: job.seq, text: ""}
+					job.doneCh <- translateResult{seq: job.seq, text: "", source: job.source}
 					continue
 				}
 				if translated != "" {
 					slog.Info("📝 translated", "worker", id, "name", job.name, "src", job.text, "dst", translated)
 				}
-				job.doneCh <- translateResult{seq: job.seq, text: translated}
+				job.doneCh <- translateResult{seq: job.seq, text: translated, source: job.source}
 			}
 		}(i)
 	}

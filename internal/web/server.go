@@ -7,13 +7,17 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"sync"
 	"time"
 
+	"path/filepath"
+
 	"github.com/christian-lee/livesub/internal/auth"
 	"github.com/christian-lee/livesub/internal/danmaku"
+	"github.com/christian-lee/livesub/internal/transcript"
 )
 
 // RoomState tracks the state of a single room
@@ -176,13 +180,15 @@ type Server struct {
 	store           *auth.Store
 	sessions        sync.Map // token → session
 	onAccountChange func()   // called when bili accounts change
+	transcriptDir   string   // directory for transcript CSVs
 }
 
-func NewServer(rc *RoomControl, port int, store *auth.Store) *Server {
+func NewServer(rc *RoomControl, port int, store *auth.Store, transcriptDir string) *Server {
 	return &Server{
-		rc:    rc,
-		port:  port,
-		store: store,
+		rc:            rc,
+		port:          port,
+		store:         store,
+		transcriptDir: transcriptDir,
 	}
 }
 
@@ -205,6 +211,8 @@ func (s *Server) Start() {
 	mux.HandleFunc("/api/toggle", s.requireAuth(s.handleToggle))
 	mux.HandleFunc("/api/account", s.requireAuth(s.handleSwitchAccount))
 	mux.HandleFunc("/api/me", s.requireAuth(s.handleMe))
+	mux.HandleFunc("/api/transcripts", s.requireAuth(s.handleTranscripts))
+	mux.HandleFunc("/api/transcripts/download", s.requireAuth(s.handleTranscriptDownload))
 
 	// Admin only
 	mux.HandleFunc("/admin", s.requireAdmin(s.handleAdminPage))
@@ -587,6 +595,86 @@ func (s *Server) handleAdminAllAccounts(w http.ResponseWriter, r *http.Request) 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(names)
+}
+
+// --- Transcripts ---
+
+func (s *Server) handleTranscripts(w http.ResponseWriter, r *http.Request) {
+	u := s.getUser(r)
+	if u == nil {
+		http.Error(w, `{"error":"unauthorized"}`, 401)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if u.IsAdmin {
+		// Admin sees all
+		files, err := transcript.ListFiles(s.transcriptDir)
+		if err != nil {
+			json.NewEncoder(w).Encode([]transcript.FileInfo{})
+			return
+		}
+		if files == nil {
+			files = []transcript.FileInfo{}
+		}
+		json.NewEncoder(w).Encode(files)
+		return
+	}
+
+	// Regular user: only their assigned rooms
+	allowedRooms, _ := s.store.GetUserRooms(u.ID)
+	var allFiles []transcript.FileInfo
+	for _, roomID := range allowedRooms {
+		files, _ := transcript.ListFilesForRoom(s.transcriptDir, roomID)
+		allFiles = append(allFiles, files...)
+	}
+	if allFiles == nil {
+		allFiles = []transcript.FileInfo{}
+	}
+	json.NewEncoder(w).Encode(allFiles)
+}
+
+func (s *Server) handleTranscriptDownload(w http.ResponseWriter, r *http.Request) {
+	u := s.getUser(r)
+	if u == nil {
+		http.Error(w, "unauthorized", 401)
+		return
+	}
+
+	filename := r.URL.Query().Get("file")
+	if filename == "" || filepath.Base(filename) != filename {
+		http.Error(w, "invalid filename", 400)
+		return
+	}
+
+	// Permission check: admin can download all, users only their rooms
+	if !u.IsAdmin {
+		allowed := false
+		rooms, _ := s.store.GetUserRooms(u.ID)
+		for _, roomID := range rooms {
+			prefix := fmt.Sprintf("%d_", roomID)
+			if len(filename) > len(prefix) && filename[:len(prefix)] == prefix {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			http.Error(w, "forbidden", 403)
+			return
+		}
+	}
+
+	path := filepath.Join(s.transcriptDir, filename)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		http.Error(w, "not found", 404)
+		return
+	}
+
+	s.audit(r, "下载字幕", filename)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	http.ServeFile(w, r, path)
 }
 
 // --- Bilibili Account Management ---
