@@ -3098,3 +3098,5 @@ time=2026-02-18T13:30:27.213+08:00 level=INFO msg="monitor: added room" room=149
 time=2026-02-18T13:30:27.213+08:00 level=INFO msg="monitor: added room" room=21396545
 time=2026-02-18T13:30:27.213+08:00 level=INFO msg="monitor: added room" room=22959964
 time=2026-02-18T13:30:27.213+08:00 level=INFO msg="bilibili monitor started" rooms=3 interval=30s
+time=2026-02-18T13:32:16.085+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T13:32:16.085+08:00 level=ERROR msg="run failed" err="context canceled"

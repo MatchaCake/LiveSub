@@ -43,10 +43,11 @@ type BilibiliConfig struct {
 }
 
 type BilibiliAccount struct {
-	Name     string `yaml:"name"`      // display name
-	SESSDATA string `yaml:"sessdata"`
-	BiliJCT  string `yaml:"bili_jct"`
-	UID      int64  `yaml:"uid"`
+	Name       string `yaml:"name"`         // display name
+	SESSDATA   string `yaml:"sessdata"`
+	BiliJCT    string `yaml:"bili_jct"`
+	UID        int64  `yaml:"uid"`
+	DanmakuMax int    `yaml:"danmaku_max"`  // per-account max chars (0=use global default)
 }
 
 type StreamConfig struct {
