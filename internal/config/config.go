@@ -48,7 +48,7 @@ func Load(path string) (*Config, error) {
 
 	cfg := &Config{
 		Gemini: GeminiConfig{
-			Model:      "gemini-3.0-flash",
+			Model:      "gemini-3-flash-preview",
 			TargetLang: "zh-CN",
 		},
 		Google: GoogleConfig{
