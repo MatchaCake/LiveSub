@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Logger writes timestamped source+translation pairs to CSV files.
+// Logger writes timestamped multi-language translation pairs to CSV files.
 // One file per stream per session (live start → live end).
 type Logger struct {
 	mu      sync.Mutex
@@ -48,7 +48,7 @@ func NewLogger(dir string, roomID int64, name string) (*Logger, error) {
 	}
 
 	w := csv.NewWriter(f)
-	w.Write([]string{"时间", "原文", "翻译"})
+	w.Write([]string{"时间", "原文语言", "原文", "目标语言", "翻译"})
 	w.Flush()
 	if err := w.Error(); err != nil {
 		f.Close()
@@ -65,15 +65,15 @@ func NewLogger(dir string, roomID int64, name string) (*Logger, error) {
 	}, nil
 }
 
-// Write logs a translation pair.
-func (l *Logger) Write(source, translated string) {
+// Write logs a multi-language translation entry.
+func (l *Logger) Write(sourceLang, source, targetLang, translated string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.writer == nil {
 		return
 	}
 	ts := time.Now().Format("15:04:05")
-	if err := l.writer.Write([]string{ts, source, translated}); err != nil {
+	if err := l.writer.Write([]string{ts, sourceLang, source, targetLang, translated}); err != nil {
 		slog.Error("transcript write failed", "err", err)
 		return
 	}

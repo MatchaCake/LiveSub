@@ -9,163 +9,25 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/christian-lee/livesub/internal/auth"
-	"github.com/christian-lee/livesub/internal/danmaku"
+	"github.com/christian-lee/livesub/internal/bot"
+	"github.com/christian-lee/livesub/internal/config"
+	"github.com/christian-lee/livesub/internal/controller"
 	"github.com/christian-lee/livesub/internal/transcript"
 )
 
-// RoomState tracks the state of a single room
+// RoomState tracks the overall state for the web UI.
 type RoomState struct {
-	RoomID         int64    `json:"room_id"`
-	Name           string   `json:"name"`
-	Live           bool     `json:"live"`
-	Paused         bool     `json:"paused"`
-	STTText        string   `json:"stt_text"`
-	Accounts       []string `json:"accounts"`
-	CurrentAccount int      `json:"current_account"`
-}
-
-// RoomControl manages per-room pause/resume state
-type RoomControl struct {
-	mu      sync.RWMutex
-	rooms   map[int64]*RoomState
-	senders map[int64]*danmaku.BilibiliSender
-}
-
-func NewRoomControl() *RoomControl {
-	return &RoomControl{
-		rooms:   make(map[int64]*RoomState),
-		senders: make(map[int64]*danmaku.BilibiliSender),
-	}
-}
-
-func (rc *RoomControl) SetSender(roomID int64, sender *danmaku.BilibiliSender) {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-	rc.senders[roomID] = sender
-}
-
-func (rc *RoomControl) GetSender(roomID int64) *danmaku.BilibiliSender {
-	rc.mu.RLock()
-	defer rc.mu.RUnlock()
-	return rc.senders[roomID]
-}
-
-func (rc *RoomControl) Register(roomID int64, name string) {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-	rc.rooms[roomID] = &RoomState{RoomID: roomID, Name: name}
-}
-
-func (rc *RoomControl) Unregister(roomID int64) {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-	delete(rc.rooms, roomID)
-	delete(rc.senders, roomID)
-}
-
-func (rc *RoomControl) SetLive(roomID int64, live bool) {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-	if r, ok := rc.rooms[roomID]; ok {
-		r.Live = live
-	}
-}
-
-func (rc *RoomControl) SetLastText(roomID int64, text string) {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-	if r, ok := rc.rooms[roomID]; ok {
-		r.STTText = text
-	}
-}
-
-func (rc *RoomControl) IsPaused(roomID int64) bool {
-	rc.mu.RLock()
-	defer rc.mu.RUnlock()
-	if r, ok := rc.rooms[roomID]; ok {
-		return r.Paused
-	}
-	return false
-}
-
-func (rc *RoomControl) Toggle(roomID int64) bool {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-	if r, ok := rc.rooms[roomID]; ok {
-		r.Paused = !r.Paused
-		return r.Paused
-	}
-	return false
-}
-
-func (rc *RoomControl) GetAll() []RoomState {
-	rc.mu.RLock()
-	defer rc.mu.RUnlock()
-	states := make([]RoomState, 0, len(rc.rooms))
-	for _, r := range rc.rooms {
-		s := *r
-		if sender, ok := rc.senders[r.RoomID]; ok {
-			s.Accounts = sender.AccountNames()
-			s.CurrentAccount, _ = sender.CurrentAccount()
-		}
-		states = append(states, s)
-	}
-	sort.Slice(states, func(i, j int) bool {
-		return states[i].RoomID < states[j].RoomID
-	})
-	return states
-}
-
-// GetFiltered returns rooms filtered by allowed room IDs and accounts.
-func (rc *RoomControl) GetFiltered(roomIDs []int64, accountNames []string) []RoomState {
-	all := rc.GetAll()
-	roomSet := make(map[int64]bool)
-	for _, id := range roomIDs {
-		roomSet[id] = true
-	}
-	acctSet := make(map[string]bool)
-	for _, n := range accountNames {
-		acctSet[n] = true
-	}
-
-	var filtered []RoomState
-	for _, r := range all {
-		if !roomSet[r.RoomID] {
-			continue
-		}
-		// Filter accounts to only allowed ones
-		var visibleAccounts []string
-		newCurrent := 0
-		for _, a := range r.Accounts {
-			if acctSet[a] {
-				visibleAccounts = append(visibleAccounts, a)
-			}
-		}
-		// Adjust current account index
-		if len(visibleAccounts) > 0 {
-			currentName := ""
-			if r.CurrentAccount < len(r.Accounts) {
-				currentName = r.Accounts[r.CurrentAccount]
-			}
-			for i, a := range visibleAccounts {
-				if a == currentName {
-					newCurrent = i
-					break
-				}
-			}
-		}
-		r.Accounts = visibleAccounts
-		r.CurrentAccount = newCurrent
-		filtered = append(filtered, r)
-	}
-	return filtered
+	RoomID   int64                    `json:"room_id"`
+	Name     string                   `json:"name"`
+	Live     bool                     `json:"live"`
+	Outputs  []controller.OutputState `json:"outputs"`
+	BotNames []string                 `json:"bot_names"`
 }
 
 // session stores user info
@@ -176,20 +38,25 @@ type session struct {
 
 // Server serves the control panel with SQLite-based authentication
 type Server struct {
-	rc              *RoomControl
+	pool            *bot.Pool
 	port            int
 	store           *auth.Store
+	cfg             *config.Config
 	sessions        sync.Map // token → session
-	onAccountChange func()   // called when bili accounts change
-	onStreamChange  func()   // called when streams added/removed
-	transcriptDir   string   // directory for transcript CSVs
+	onAccountChange func()
+	transcriptDir   string
+
+	mu   sync.RWMutex
+	ctrl *controller.Controller
+	live bool
 }
 
-func NewServer(rc *RoomControl, port int, store *auth.Store, transcriptDir string) *Server {
+func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string, cfg *config.Config) *Server {
 	return &Server{
-		rc:            rc,
+		pool:          pool,
 		port:          port,
 		store:         store,
+		cfg:           cfg,
 		transcriptDir: transcriptDir,
 	}
 }
@@ -199,9 +66,18 @@ func (s *Server) OnAccountChange(fn func()) {
 	s.onAccountChange = fn
 }
 
-// OnStreamChange registers a callback when streams are added/removed.
-func (s *Server) OnStreamChange(fn func()) {
-	s.onStreamChange = fn
+// SetController sets the active controller (when stream goes live).
+func (s *Server) SetController(ctrl *controller.Controller) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ctrl = ctrl
+}
+
+// SetLive updates live status.
+func (s *Server) SetLive(live bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.live = live
 }
 
 func (s *Server) Start() {
@@ -214,9 +90,8 @@ func (s *Server) Start() {
 
 	// Authenticated
 	mux.HandleFunc("/", s.requireAuth(s.handleIndex))
-	mux.HandleFunc("/api/rooms", s.requireAuth(s.handleRooms))
+	mux.HandleFunc("/api/status", s.requireAuth(s.handleStatus))
 	mux.HandleFunc("/api/toggle", s.requireAuth(s.handleToggle))
-	mux.HandleFunc("/api/account", s.requireAuth(s.handleSwitchAccount))
 	mux.HandleFunc("/api/me", s.requireAuth(s.handleMe))
 	mux.HandleFunc("/api/transcripts", s.requireAuth(s.handleTranscripts))
 	mux.HandleFunc("/api/transcripts/download", s.requireAuth(s.handleTranscriptDownload))
@@ -225,11 +100,8 @@ func (s *Server) Start() {
 	mux.HandleFunc("/admin", s.requireAdmin(s.handleAdminPage))
 	mux.HandleFunc("/api/admin/users", s.requireAdmin(s.handleAdminUsers))
 	mux.HandleFunc("/api/admin/user", s.requireAdmin(s.handleAdminUser))
-	mux.HandleFunc("/api/admin/all-rooms", s.requireAdmin(s.handleAdminAllRooms))
 	mux.HandleFunc("/api/admin/all-accounts", s.requireAdmin(s.handleAdminAllAccounts))
 	mux.HandleFunc("/api/admin/audit", s.requireAdmin(s.handleAdminAudit))
-	mux.HandleFunc("/api/admin/streams", s.requireAdmin(s.handleAdminStreams))
-	mux.HandleFunc("/api/admin/stream", s.requireAdmin(s.handleAdminStream))
 	mux.HandleFunc("/api/admin/bili-accounts", s.requireAdmin(s.handleBiliAccounts))
 	mux.HandleFunc("/api/admin/bili-account", s.requireAdmin(s.handleBiliAccount))
 	mux.HandleFunc("/api/admin/bili-qr/generate", s.requireAdmin(s.handleBiliQRGenerate))
@@ -375,105 +247,71 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(u)
 }
 
-// --- Room handlers (filtered by user permissions) ---
+// --- Status handler (replaces old rooms handler) ---
 
-func (s *Server) handleRooms(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	live := s.live
+	ctrl := s.ctrl
+	s.mu.RUnlock()
+
+	state := RoomState{
+		RoomID:   s.cfg.Streamer.RoomID,
+		Name:     s.cfg.Streamer.Name,
+		Live:     live,
+		BotNames: s.pool.Names(),
+	}
+
+	if ctrl != nil {
+		state.Outputs = ctrl.OutputStates()
+	} else {
+		// Show configured outputs even when offline
+		state.Outputs = make([]controller.OutputState, len(s.cfg.Outputs))
+		for i, o := range s.cfg.Outputs {
+			state.Outputs[i] = controller.OutputState{
+				Name:       o.Name,
+				Platform:   o.Platform,
+				TargetLang: o.TargetLang,
+				BotName:    o.Account,
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(state)
+}
+
+func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
 	u := s.getUser(r)
 	if u == nil {
 		http.Error(w, `{"error":"unauthorized"}`, 401)
 		return
 	}
 
-	var rooms []RoomState
-	if u.IsAdmin {
-		rooms = s.rc.GetAll()
-	} else {
-		allowedRooms, _ := s.store.GetUserRooms(u.ID)
-		allowedAccounts, _ := s.store.GetUserAccounts(u.ID)
-		rooms = s.rc.GetFiltered(allowedRooms, allowedAccounts)
-	}
-	if rooms == nil {
-		rooms = []RoomState{}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(rooms)
-}
-
-func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
-	u := s.getUser(r)
-	roomID, _ := strconv.ParseInt(r.URL.Query().Get("room"), 10, 64)
-	if !s.userCanAccessRoom(u, roomID) {
-		http.Error(w, `{"error":"forbidden"}`, 403)
+	outputName := r.URL.Query().Get("output")
+	if outputName == "" {
+		http.Error(w, `{"error":"output name required"}`, 400)
 		return
 	}
-	paused := s.rc.Toggle(roomID)
+
+	s.mu.RLock()
+	ctrl := s.ctrl
+	s.mu.RUnlock()
+
+	if ctrl == nil {
+		http.Error(w, `{"error":"no active stream"}`, 400)
+		return
+	}
+
+	paused := ctrl.TogglePause(outputName)
 	if paused {
-		s.audit(r, "暂停翻译", fmt.Sprintf("房间 %d", roomID))
+		s.audit(r, "暂停翻译", fmt.Sprintf("输出 %s", outputName))
 	} else {
-		s.audit(r, "恢复翻译", fmt.Sprintf("房间 %d", roomID))
+		s.audit(r, "恢复翻译", fmt.Sprintf("输出 %s", outputName))
 	}
-	slog.Info("room toggled", "room", roomID, "paused", paused, "user", u.Username)
+	slog.Info("output toggled", "output", outputName, "paused", paused, "user", u.Username)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"room_id": roomID, "paused": paused})
-}
-
-func (s *Server) handleSwitchAccount(w http.ResponseWriter, r *http.Request) {
-	u := s.getUser(r)
-	roomID, _ := strconv.ParseInt(r.URL.Query().Get("room"), 10, 64)
-	idx, _ := strconv.Atoi(r.URL.Query().Get("index"))
-
-	if !s.userCanAccessRoom(u, roomID) {
-		http.Error(w, `{"error":"forbidden"}`, 403)
-		return
-	}
-
-	sender := s.rc.GetSender(roomID)
-	if sender == nil {
-		http.Error(w, "room not found", 404)
-		return
-	}
-
-	// Check if user can use this account
-	names := sender.AccountNames()
-	if idx < 0 || idx >= len(names) {
-		http.Error(w, "invalid index", 400)
-		return
-	}
-	if !u.IsAdmin {
-		allowed, _ := s.store.GetUserAccounts(u.ID)
-		acctSet := make(map[string]bool)
-		for _, a := range allowed {
-			acctSet[a] = true
-		}
-		if !acctSet[names[idx]] {
-			http.Error(w, `{"error":"forbidden"}`, 403)
-			return
-		}
-	}
-
-	sender.SwitchAccount(idx)
-	newIdx, name := sender.CurrentAccount()
-	s.audit(r, "切换账号", fmt.Sprintf("房间 %d → %s", roomID, name))
-	slog.Info("account switched", "room", roomID, "account", name, "user", u.Username)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"room_id": roomID, "account_index": newIdx, "account_name": name})
-}
-
-func (s *Server) userCanAccessRoom(u *auth.User, roomID int64) bool {
-	if u == nil {
-		return false
-	}
-	if u.IsAdmin {
-		return true
-	}
-	rooms, _ := s.store.GetUserRooms(u.ID)
-	for _, r := range rooms {
-		if r == roomID {
-			return true
-		}
-	}
-	return false
+	json.NewEncoder(w).Encode(map[string]any{"output": outputName, "paused": paused})
 }
 
 // --- Admin handlers ---
@@ -495,10 +333,10 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 
 	case "POST":
 		var req struct {
-			Username string  `json:"username"`
-			Password string  `json:"password"`
-			IsAdmin  bool    `json:"is_admin"`
-			Rooms    []int64 `json:"rooms"`
+			Username string   `json:"username"`
+			Password string   `json:"password"`
+			IsAdmin  bool     `json:"is_admin"`
+			Rooms    []int64  `json:"rooms"`
 			Accounts []string `json:"accounts"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -546,8 +384,8 @@ func (s *Server) handleAdminUser(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "PUT":
 		var req struct {
-			Password *string  `json:"password"`
-			Rooms    *[]int64 `json:"rooms"`
+			Password *string   `json:"password"`
+			Rooms    *[]int64  `json:"rooms"`
 			Accounts *[]string `json:"accounts"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -587,37 +425,16 @@ func (s *Server) handleAdminUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleAdminAllRooms(w http.ResponseWriter, r *http.Request) {
-	rooms := s.rc.GetAll()
-	type roomInfo struct {
-		RoomID int64  `json:"room_id"`
-		Name   string `json:"name"`
-	}
-	var infos []roomInfo
-	for _, r := range rooms {
-		infos = append(infos, roomInfo{RoomID: r.RoomID, Name: r.Name})
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(infos)
-}
-
 func (s *Server) handleAdminAllAccounts(w http.ResponseWriter, r *http.Request) {
-	// Collect unique account names from senders + DB
-	seen := make(map[string]bool)
-	var names []string
-	for _, room := range s.rc.GetAll() {
-		for _, a := range room.Accounts {
-			if !seen[a] {
-				seen[a] = true
-				names = append(names, a)
-			}
-		}
-	}
-	// Also include DB accounts not yet synced to senders
+	names := s.pool.Names()
+	// Also include DB accounts
 	if dbAccounts, err := s.store.ListBiliAccountSummaries(); err == nil {
+		seen := make(map[string]bool)
+		for _, n := range names {
+			seen[n] = true
+		}
 		for _, a := range dbAccounts {
 			if !seen[a.Name] {
-				seen[a.Name] = true
 				names = append(names, a.Name)
 			}
 		}
@@ -637,31 +454,15 @@ func (s *Server) handleTranscripts(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	if u.IsAdmin {
-		// Admin sees all
-		files, err := transcript.ListFiles(s.transcriptDir)
-		if err != nil {
-			json.NewEncoder(w).Encode([]transcript.FileInfo{})
-			return
-		}
-		if files == nil {
-			files = []transcript.FileInfo{}
-		}
-		json.NewEncoder(w).Encode(files)
+	files, err := transcript.ListFiles(s.transcriptDir)
+	if err != nil {
+		json.NewEncoder(w).Encode([]transcript.FileInfo{})
 		return
 	}
-
-	// Regular user: only their assigned rooms
-	allowedRooms, _ := s.store.GetUserRooms(u.ID)
-	var allFiles []transcript.FileInfo
-	for _, roomID := range allowedRooms {
-		files, _ := transcript.ListFilesForRoom(s.transcriptDir, roomID)
-		allFiles = append(allFiles, files...)
+	if files == nil {
+		files = []transcript.FileInfo{}
 	}
-	if allFiles == nil {
-		allFiles = []transcript.FileInfo{}
-	}
-	json.NewEncoder(w).Encode(allFiles)
+	json.NewEncoder(w).Encode(files)
 }
 
 func (s *Server) handleTranscriptDownload(w http.ResponseWriter, r *http.Request) {
@@ -677,22 +478,6 @@ func (s *Server) handleTranscriptDownload(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Permission check: admin can download all, users only their rooms
-	if !u.IsAdmin {
-		allowed := false
-		rooms, _ := s.store.GetUserRooms(u.ID)
-		for _, roomID := range rooms {
-			if strings.HasPrefix(filename, fmt.Sprintf("%d_", roomID)) {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			http.Error(w, "forbidden", 403)
-			return
-		}
-	}
-
 	path := filepath.Join(s.transcriptDir, filename)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		http.Error(w, "not found", 404)
@@ -703,107 +488,6 @@ func (s *Server) handleTranscriptDownload(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	http.ServeFile(w, r, path)
-}
-
-// --- Stream Management ---
-
-// StreamView is the combined view of config + DB streams for the admin panel.
-type StreamView struct {
-	ID         int64  `json:"id"`          // DB id (0 for config-only)
-	Name       string `json:"name"`
-	RoomID     int64  `json:"room_id"`
-	SourceLang string `json:"source_lang"`
-	Source     string `json:"source"`      // "config" or "webui"
-	CreatedAt  string `json:"created_at"`
-}
-
-func (s *Server) handleAdminStreams(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	// Get all active rooms from room control (already merged)
-	rooms := s.rc.GetAll()
-	dbStreams, _ := s.store.ListStreams()
-	dbMap := make(map[int64]auth.StreamInfo)
-	for _, ds := range dbStreams {
-		dbMap[ds.RoomID] = ds
-	}
-
-	var views []StreamView
-	for _, room := range rooms {
-		if ds, ok := dbMap[room.RoomID]; ok {
-			views = append(views, StreamView{
-				ID: ds.ID, Name: room.Name, RoomID: room.RoomID,
-				SourceLang: ds.SourceLang, Source: "webui", CreatedAt: ds.CreatedAt,
-			})
-		} else {
-			views = append(views, StreamView{
-				Name: room.Name, RoomID: room.RoomID, Source: "config",
-			})
-		}
-	}
-	if views == nil {
-		views = []StreamView{}
-	}
-	json.NewEncoder(w).Encode(views)
-}
-
-func (s *Server) handleAdminStream(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	switch r.Method {
-	case "POST":
-		var req struct {
-			Name       string `json:"name"`
-			RoomID     int64  `json:"room_id"`
-			SourceLang string `json:"source_lang"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, `{"error":"invalid json"}`, 400)
-			return
-		}
-		if req.Name == "" || req.RoomID == 0 {
-			http.Error(w, `{"error":"name and room_id required"}`, 400)
-			return
-		}
-		si, err := s.store.AddStream(req.Name, req.RoomID, req.SourceLang)
-		if err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, 400)
-			return
-		}
-		s.audit(r, "添加直播间", fmt.Sprintf("%s (#%d)", req.Name, req.RoomID))
-		if s.onStreamChange != nil {
-			s.onStreamChange()
-		}
-		json.NewEncoder(w).Encode(si)
-
-	case "DELETE":
-		idStr := r.URL.Query().Get("id")
-		roomStr := r.URL.Query().Get("room")
-
-		if idStr != "" && idStr != "0" {
-			// DB stream
-			id, _ := strconv.ParseInt(idStr, 10, 64)
-			if err := s.store.DeleteStream(id); err != nil {
-				slog.Error("delete stream", "id", id, "err", err)
-			}
-			s.audit(r, "删除直播间", fmt.Sprintf("DB ID=%d", id))
-		} else if roomStr != "" {
-			// Config stream → hide
-			roomID, _ := strconv.ParseInt(roomStr, 10, 64)
-			if err := s.store.HideStream(roomID); err != nil {
-				slog.Error("hide stream", "room", roomID, "err", err)
-			}
-			s.audit(r, "隐藏直播间", fmt.Sprintf("房间 %d (配置)", roomID))
-		}
-
-		if s.onStreamChange != nil {
-			s.onStreamChange()
-		}
-		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
-
-	default:
-		http.Error(w, "method not allowed", 405)
-	}
 }
 
 // --- Bilibili Account Management ---
@@ -886,13 +570,11 @@ func (s *Server) handleBiliQRPoll(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if result.Status == "confirmed" {
-		// Get username from Bilibili
 		name := fmt.Sprintf("UID_%d", result.UID)
 		if uname, err := auth.GetBiliUserInfo(result.SESSDATA); err == nil {
 			name = uname
 		}
 
-		// Save to DB
 		acc, err := s.store.SaveBiliAccount(name, result.SESSDATA, result.BiliJCT, result.UID, 20, "")
 		if err != nil {
 			json.NewEncoder(w).Encode(map[string]string{"status": "error", "error": err.Error()})
