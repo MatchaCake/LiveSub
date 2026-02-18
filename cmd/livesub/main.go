@@ -247,16 +247,8 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}()
 
 	// Dispatch STT results to shared pool
-	// Singing detection: long text bursts with moderate confidence = lyrics
-	// Normal speech: short sentences (<50 chars), singing: long continuous text (>80 chars)
-	const (
-		singingLenThreshold = 80  // rune count: lyrics tend to be very long
-		speechLenThreshold  = 40  // short text = definitely speech
-		pauseAfter          = 2   // consecutive singing-like results to trigger pause
-		resumeAfter         = 2   // consecutive speech-like results to resume
-	)
-	var singingCount, speechCount int
-	singing := false
+	// Skip low-confidence results (singing, BGM, noise)
+	const minConfidence = float32(0.75)
 
 	seq := 0
 	for result := range resultsCh {
@@ -264,35 +256,9 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 			continue
 		}
 
-		textLen := len([]rune(result.Text))
-
-		// Heuristic: singing = long text + lower confidence (lyrics recognized as wall of text)
-		// Speech = short natural sentences
-		isSingingLike := textLen > singingLenThreshold && result.Confidence < 0.75
-		isSpeechLike := textLen < speechLenThreshold || result.Confidence > 0.85
-
-		if isSingingLike {
-			singingCount++
-			speechCount = 0
-		} else if isSpeechLike {
-			speechCount++
-			singingCount = 0
-		}
-
-		if !singing && singingCount >= pauseAfter {
-			singing = true
-			slog.Info("🎵 singing detected, pausing translation", "name", sc.Name,
-				"textLen", textLen, "conf", result.Confidence, "streak", singingCount)
-		}
-		if singing && speechCount >= resumeAfter {
-			singing = false
-			slog.Info("🎤 speech resumed, resuming translation", "name", sc.Name,
-				"textLen", textLen, "conf", result.Confidence, "streak", speechCount)
-		}
-
-		if singing {
-			slog.Info("🎵 skipping (singing)", "name", sc.Name, "text", result.Text,
-				"len", textLen, "conf", result.Confidence)
+		if result.Confidence > 0 && result.Confidence < minConfidence {
+			slog.Info("🎵 skipping low confidence", "name", sc.Name, "text", result.Text,
+				"conf", result.Confidence)
 			continue
 		}
 
