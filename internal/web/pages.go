@@ -925,7 +925,7 @@ async function loadBiliAccounts() {
     maxInput.type = 'number';
     maxInput.value = a.danmaku_max;
     maxInput.style.cssText = 'width:60px;padding:4px;border:1px solid #333;border-radius:4px;background:#0f3460;color:#eee;font-size:13px;';
-    maxInput.onchange = function() { updateBiliMax(a.id, this.value); };
+    maxInput.onchange = function() { updateBiliMax(a.id, this.value, this); };
 
     var actions = makeBtn(t('delete'), 'small-btn danger', function() { deleteBiliAccount(a.id, a.name); });
 
@@ -945,11 +945,16 @@ async function loadBiliAccounts() {
   container.appendChild(buildTable([t('name'), t('uid'), t('danmaku_max'), t('created_at'), t('status'), t('actions')], rows));
 }
 
-async function updateBiliMax(id, val) {
-  await fetch('/api/admin/bili-account?id=' + id, {
+async function updateBiliMax(id, val, inputEl) {
+  var res = await fetch('/api/admin/bili-account?id=' + id, {
     method: 'PUT', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({danmaku_max: parseInt(val)})
   });
+  if (res.ok && inputEl) {
+    var orig = inputEl.style.borderColor;
+    inputEl.style.borderColor = '#4ecca3';
+    setTimeout(function() { inputEl.style.borderColor = orig; }, 1000);
+  }
 }
 
 async function deleteBiliAccount(id, name) {
