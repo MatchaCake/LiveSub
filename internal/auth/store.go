@@ -29,6 +29,9 @@ func NewStore(dbPath string) (*Store, error) {
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	if err := s.migrateBili(); err != nil {
+		return nil, fmt.Errorf("migrate bili: %w", err)
+	}
 	return s, nil
 }
 
