@@ -256,7 +256,7 @@ const adminHTML = `<!DOCTYPE html>
 <div class="section">
   <h2>📺 直播间管理</h2>
   <table>
-    <thead><tr><th>名称</th><th>房间号</th><th>语言</th><th>添加时间</th><th>操作</th></tr></thead>
+    <thead><tr><th>名称</th><th>房间号</th><th>语言</th><th>来源</th><th>操作</th></tr></thead>
     <tbody id="streamsBody"></tbody>
   </table>
   <div style="margin-top:15px;">
@@ -466,15 +466,17 @@ async function loadStreams() {
   const res = await fetch('/api/admin/streams');
   const streams = await res.json() || [];
   const body = document.getElementById('streamsBody');
-  body.innerHTML = streams.map(s =>
-    '<tr>' +
+  body.innerHTML = streams.map(s => {
+    const src = s.source === 'config' ? '<span class="tag" style="background:#444;">配置文件</span>' : '<span class="tag" style="background:#0f3460;">WebUI</span>';
+    const delParam = s.id ? 'id=' + s.id : 'room=' + s.room_id;
+    return '<tr>' +
     '<td>' + s.name + '</td>' +
     '<td><a href="https://live.bilibili.com/' + s.room_id + '" target="_blank" style="color:#4ecca3;">' + s.room_id + '</a></td>' +
-    '<td style="font-size:12px;color:#aaa;">' + s.source_lang + '</td>' +
-    '<td style="font-size:12px;color:#aaa;">' + (s.created_at||'') + '</td>' +
-    '<td><button class="small-btn danger" onclick="deleteStream(' + s.id + ',\'' + s.name.replace(/'/g,"\\'") + '\')">删除</button></td>' +
-    '</tr>'
-  ).join('') || '<tr><td colspan="5" style="text-align:center;color:#666;">暂无 (仅显示通过WebUI添加的直播间)</td></tr>';
+    '<td style="font-size:12px;color:#aaa;">' + (s.source_lang||'-') + '</td>' +
+    '<td>' + src + '</td>' +
+    '<td><button class="small-btn danger" onclick="deleteStream(\'' + delParam + '\',\'' + s.name.replace(/'/g,"\\'") + '\')">删除</button></td>' +
+    '</tr>';
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:#666;">暂无直播间</td></tr>';
 }
 
 function extractRoomID(input) {
@@ -518,9 +520,9 @@ async function addStream() {
   }
 }
 
-async function deleteStream(id, name) {
+async function deleteStream(param, name) {
   if (!confirm('确定删除直播间 ' + name + '?\\n正在进行的翻译会停止')) return;
-  await fetch('/api/admin/stream?id=' + id, {method: 'DELETE'});
+  await fetch('/api/admin/stream?' + param, {method: 'DELETE'});
   loadStreams();
 }
 

@@ -114,8 +114,12 @@ func run(cfgPath string) error {
 	// Build room → stream config mapping (config + DB)
 	mergeStreams := func() map[int64]config.StreamConfig {
 		currentCfg := hotCfg.Get()
+		hidden := authStore.ListHiddenRooms()
 		merged := make(map[int64]config.StreamConfig)
 		for _, sc := range currentCfg.Streams {
+			if hidden[sc.RoomID] {
+				continue
+			}
 			merged[sc.RoomID] = sc
 		}
 		// DB streams (override config if same room_id)

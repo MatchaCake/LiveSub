@@ -687,17 +687,44 @@ func (s *Server) handleTranscriptDownload(w http.ResponseWriter, r *http.Request
 
 // --- Stream Management ---
 
+// StreamView is the combined view of config + DB streams for the admin panel.
+type StreamView struct {
+	ID         int64  `json:"id"`          // DB id (0 for config-only)
+	Name       string `json:"name"`
+	RoomID     int64  `json:"room_id"`
+	SourceLang string `json:"source_lang"`
+	Source     string `json:"source"`      // "config" or "webui"
+	CreatedAt  string `json:"created_at"`
+}
+
 func (s *Server) handleAdminStreams(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	streams, err := s.store.ListStreams()
-	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, 500)
-		return
+
+	// Get all active rooms from room control (already merged)
+	rooms := s.rc.GetAll()
+	dbStreams, _ := s.store.ListStreams()
+	dbMap := make(map[int64]auth.StreamInfo)
+	for _, ds := range dbStreams {
+		dbMap[ds.RoomID] = ds
 	}
-	if streams == nil {
-		streams = []auth.StreamInfo{}
+
+	var views []StreamView
+	for _, room := range rooms {
+		if ds, ok := dbMap[room.RoomID]; ok {
+			views = append(views, StreamView{
+				ID: ds.ID, Name: room.Name, RoomID: room.RoomID,
+				SourceLang: ds.SourceLang, Source: "webui", CreatedAt: ds.CreatedAt,
+			})
+		} else {
+			views = append(views, StreamView{
+				Name: room.Name, RoomID: room.RoomID, Source: "config",
+			})
+		}
 	}
-	json.NewEncoder(w).Encode(streams)
+	if views == nil {
+		views = []StreamView{}
+	}
+	json.NewEncoder(w).Encode(views)
 }
 
 func (s *Server) handleAdminStream(w http.ResponseWriter, r *http.Request) {
@@ -728,9 +755,20 @@ func (s *Server) handleAdminStream(w http.ResponseWriter, r *http.Request) {
 
 	case "DELETE":
 		idStr := r.URL.Query().Get("id")
-		id, _ := strconv.ParseInt(idStr, 10, 64)
-		s.store.DeleteStream(id)
-		s.audit(r, "删除直播间", fmt.Sprintf("ID=%d", id))
+		roomStr := r.URL.Query().Get("room")
+
+		if idStr != "" && idStr != "0" {
+			// DB stream
+			id, _ := strconv.ParseInt(idStr, 10, 64)
+			s.store.DeleteStream(id)
+			s.audit(r, "删除直播间", fmt.Sprintf("DB ID=%d", id))
+		} else if roomStr != "" {
+			// Config stream → hide
+			roomID, _ := strconv.ParseInt(roomStr, 10, 64)
+			s.store.HideStream(roomID)
+			s.audit(r, "隐藏直播间", fmt.Sprintf("房间 %d (配置)", roomID))
+		}
+
 		if s.onStreamChange != nil {
 			s.onStreamChange()
 		}

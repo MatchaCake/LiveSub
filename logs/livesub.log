@@ -3151,3 +3151,11 @@ time=2026-02-18T14:10:43.919+08:00 level=INFO msg="monitor: added room" room=149
 time=2026-02-18T14:10:43.919+08:00 level=INFO msg="monitor: added room" room=21396545
 time=2026-02-18T14:10:43.919+08:00 level=INFO msg="monitor: added room" room=22959964
 time=2026-02-18T14:10:43.919+08:00 level=INFO msg="bilibili monitor started" rooms=3 interval=30s
+time=2026-02-18T14:12:24.197+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T14:12:24.198+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T14:12:24.265+08:00 level=INFO msg="web control panel started" addr=:8899
+time=2026-02-18T14:12:24.265+08:00 level=INFO msg="livesub started" streams=3 rooms="[14988041 21396545 22959964]" web=http://localhost:8899
+time=2026-02-18T14:12:24.266+08:00 level=INFO msg="monitor: added room" room=14988041
+time=2026-02-18T14:12:24.266+08:00 level=INFO msg="monitor: added room" room=21396545
+time=2026-02-18T14:12:24.266+08:00 level=INFO msg="monitor: added room" room=22959964
+time=2026-02-18T14:12:24.266+08:00 level=INFO msg="bilibili monitor started" rooms=3 interval=30s

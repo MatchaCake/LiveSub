@@ -19,8 +19,46 @@ func (s *Store) migrateStreams() error {
 			target_lang TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		);
+		CREATE TABLE IF NOT EXISTS hidden_streams (
+			room_id INTEGER PRIMARY KEY
+		);
 	`)
 	return err
+}
+
+// HideStream hides a config-based stream (won't affect DB streams, use DeleteStream for those).
+func (s *Store) HideStream(roomID int64) error {
+	_, err := s.db.Exec(`INSERT OR IGNORE INTO hidden_streams (room_id) VALUES (?)`, roomID)
+	return err
+}
+
+// UnhideStream removes a stream from the hidden list.
+func (s *Store) UnhideStream(roomID int64) error {
+	_, err := s.db.Exec(`DELETE FROM hidden_streams WHERE room_id = ?`, roomID)
+	return err
+}
+
+// IsHidden checks if a room is hidden.
+func (s *Store) IsHidden(roomID int64) bool {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM hidden_streams WHERE room_id = ?`, roomID).Scan(&n)
+	return n > 0
+}
+
+// ListHiddenRooms returns all hidden room IDs.
+func (s *Store) ListHiddenRooms() map[int64]bool {
+	m := make(map[int64]bool)
+	rows, err := s.db.Query(`SELECT room_id FROM hidden_streams`)
+	if err != nil {
+		return m
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		rows.Scan(&id)
+		m[id] = true
+	}
+	return m
 }
 
 func (s *Store) AddStream(name string, roomID int64, sourceLang string) (*StreamInfo, error) {
