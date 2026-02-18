@@ -110,8 +110,7 @@ const indexHTML = `<!DOCTYPE html>
   <div class="header-right">
     <div id="langSwitcherSlot"></div>
     <span id="userInfo"></span>
-    <a href="/settings" class="link-btn" data-i18n="settings">⚙️ 设置</a>
-    <a href="/admin" class="link-btn" id="adminLink" style="display:none" data-i18n="admin">🔧 管理</a>
+    <a href="/admin" class="link-btn" data-i18n="admin">⚙️ 管理</a>
     <a href="/api/logout" class="link-btn" data-i18n="logout">退出登录</a>
   </div>
 </div>
@@ -137,9 +136,6 @@ async function init() {
   if (res.status === 401) { window.location.href = '/login'; return; }
   currentUser = await res.json();
   document.getElementById('userInfo').textContent = currentUser.username;
-  if (currentUser.is_admin) {
-    document.getElementById('adminLink').style.display = '';
-  }
   fetchStatus();
   setInterval(fetchStatus, 2000);
 }
@@ -359,7 +355,7 @@ const adminHTML = `<!DOCTYPE html>
 </div>
 
 <!-- Streamer Management -->
-<div class="section">
+<div class="section admin-only">
   <h2 data-i18n="stream_mgmt">📺 主播管理</h2>
   <div id="streamersTable"></div>
   <div style="margin-top:15px;">
@@ -423,12 +419,12 @@ const adminHTML = `<!DOCTYPE html>
 </div>
 
 <!-- User Management -->
-<div class="section">
+<div class="section admin-only">
   <h2 data-i18n="user_list">👥 用户列表</h2>
   <div id="usersTable"></div>
 </div>
 
-<div class="section">
+<div class="section admin-only">
   <h2 data-i18n="add_user">➕ 添加用户</h2>
   <div id="addMsg" class="msg"></div>
   <div class="form-row">
@@ -448,7 +444,7 @@ const adminHTML = `<!DOCTYPE html>
 </div>
 
 <!-- Bilibili Accounts -->
-<div class="section">
+<div class="section admin-only">
   <h2 data-i18n="bili_accounts">🎮 B站弹幕账号</h2>
   <div id="biliTable"></div>
   <div style="margin-top:15px;">
@@ -462,7 +458,7 @@ const adminHTML = `<!DOCTYPE html>
 </div>
 
 <!-- Audit Log -->
-<div class="section">
+<div class="section admin-only">
   <h2 data-i18n="audit_log">📋 操作记录</h2>
   <div style="margin-bottom:10px;">
     <button class="small-btn" onclick="loadAudit()">加载记录</button>
@@ -543,13 +539,31 @@ function makeFragment(nodes) {
   return f;
 }
 
+var isAdmin = false;
+
 async function init() {
-  var acctsRes = await fetch('/api/admin/all-accounts');
-  allAccounts = await acctsRes.json() || [];
-  renderCheckboxes();
+  var meRes = await fetch('/api/me');
+  if (meRes.status === 401) { window.location.href = '/login'; return; }
+  var me = await meRes.json();
+  isAdmin = me.is_admin;
+
+  // Hide admin-only sections for regular users
+  if (!isAdmin) {
+    document.querySelectorAll('.admin-only').forEach(function(el) { el.style.display = 'none'; });
+  }
+
+  // Load accounts: admin gets all, user gets assigned
+  if (isAdmin) {
+    var acctsRes = await fetch('/api/admin/all-accounts');
+    allAccounts = await acctsRes.json() || [];
+    renderCheckboxes();
+    loadUsers();
+    loadBiliAccounts();
+  } else {
+    var acctsRes = await fetch('/api/my/accounts');
+    allAccounts = await acctsRes.json() || [];
+  }
   loadStreamers();
-  loadUsers();
-  loadBiliAccounts();
 }
 
 function renderCheckboxes() {
@@ -583,11 +597,20 @@ function renderRoomCheckboxes() {
 // --- Streamer Management ---
 
 async function loadStreamers() {
-  var res = await fetch('/api/admin/streamers');
-  allStreamers = await res.json() || [];
-  renderStreamersTable();
+  if (isAdmin) {
+    var res = await fetch('/api/admin/streamers');
+    allStreamers = await res.json() || [];
+    renderStreamersTable();
+    renderRoomCheckboxes();
+  } else {
+    // Non-admin: get streamers from status (filtered by permission)
+    var res = await fetch('/api/status');
+    var status = await res.json();
+    allStreamers = (status.streamers || []).map(function(s) {
+      return {name: s.name, room_id: s.room_id, source_lang: '', outputs: s.outputs || []};
+    });
+  }
   renderStreamerSelect();
-  renderRoomCheckboxes();
   if (allStreamers.length > 0) {
     loadStreamerOutputs();
   }
@@ -685,7 +708,8 @@ async function loadStreamerOutputs() {
     container.textContent = t('select_streamer');
     return;
   }
-  var res = await fetch('/api/admin/streamer-outputs?streamer=' + encodeURIComponent(streamerName));
+  var apiBase = isAdmin ? '/api/admin/streamer-outputs' : '/api/my/streamer-outputs';
+  var res = await fetch(apiBase + '?streamer=' + encodeURIComponent(streamerName));
   var outputs = await res.json() || [];
   cachedOutputs = outputs;
   container.textContent = '';
@@ -736,7 +760,7 @@ async function saveOutput() {
     prefix: document.getElementById('outPrefix').value,
     suffix: document.getElementById('outSuffix').value
   };
-  var res = await fetch('/api/admin/streamer-outputs?streamer=' + encodeURIComponent(streamerName), {
+  var res = await fetch((isAdmin ? '/api/admin/streamer-outputs' : '/api/my/streamer-outputs') + '?streamer=' + encodeURIComponent(streamerName), {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(body)
   });
@@ -775,7 +799,7 @@ function editOutput(name) {
 async function deleteOutput(name) {
   var streamerName = document.getElementById('outputStreamerSelect').value;
   if (!confirm(t('confirm_del_output') + ' ' + name + '?')) return;
-  await fetch('/api/admin/streamer-outputs?streamer=' + encodeURIComponent(streamerName) + '&name=' + encodeURIComponent(name), {method: 'DELETE'});
+  await fetch((isAdmin ? '/api/admin/streamer-outputs' : '/api/my/streamer-outputs') + '?streamer=' + encodeURIComponent(streamerName) + '&name=' + encodeURIComponent(name), {method: 'DELETE'});
   loadStreamerOutputs();
   loadStreamers();
 }
@@ -992,244 +1016,3 @@ init();
 </body>
 </html>`
 
-const settingsHTML = `<!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LiveSub - ` + "设置" + `</title>
-` + faviconTag + `
-` + i18nScript + `
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; padding: 20px; }
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 10px; }
-  h1 { font-size: 24px; color: #e94560; }
-  h2 { font-size: 18px; color: #e94560; margin-bottom: 15px; }
-  .link-btn { padding: 8px 16px; border: 1px solid #555; border-radius: 6px; background: transparent; color: #aaa; cursor: pointer; font-size: 13px; text-decoration: none; }
-  .link-btn:hover { border-color: #e94560; color: #e94560; }
-  .section { background: #16213e; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #0f3460; font-size: 14px; }
-  th { color: #aaa; font-weight: normal; font-size: 13px; }
-  .small-btn { padding: 5px 12px; border: 1px solid #555; border-radius: 4px; background: transparent; color: #aaa; cursor: pointer; font-size: 12px; }
-  .small-btn:hover { border-color: #e94560; color: #e94560; }
-  .small-btn.danger:hover { border-color: #ff4444; color: #ff4444; }
-  .form-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
-  .form-row input, .form-row select { padding: 8px 12px; border: 1px solid #333; border-radius: 6px; background: #0f3460; color: #eee; font-size: 14px; outline: none; }
-  .form-row input:focus { border-color: #e94560; }
-  .add-btn { padding: 8px 20px; border: none; border-radius: 6px; background: #4ecca3; color: #000; cursor: pointer; font-size: 14px; font-weight: bold; }
-  .add-btn:hover { opacity: 0.9; }
-  .msg { padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 13px; display: none; }
-  .msg.ok { background: #1a3a2a; color: #4ecca3; display: block; }
-  .msg.err { background: #3a1a1a; color: #e94560; display: block; }
-  .streamer-tab { display: inline-block; padding: 8px 16px; border: 1px solid #333; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 14px; color: #aaa; background: transparent; margin-right: 4px; }
-  .streamer-tab.active { background: #16213e; color: #e94560; border-color: #e94560; border-bottom-color: #16213e; }
-</style>
-</head>
-<body>
-<div class="header">
-  <div style="display:flex;align-items:center;gap:15px;">
-    <h1 data-i18n="settings">⚙️ 设置</h1>
-    <div id="langSwitcherSlot"></div>
-  </div>
-  <a href="/" class="link-btn" data-i18n="back">← 返回控制面板</a>
-</div>
-
-<div class="section">
-  <h2 data-i18n="manage_outputs">📤 输出管理</h2>
-  <div id="streamerTabs" style="margin-bottom:-1px;"></div>
-  <div id="outputsContent" style="border-top:1px solid #0f3460;padding-top:15px;"></div>
-  <div style="margin-top:15px;">
-    <h3 style="font-size:14px;color:#aaa;margin-bottom:10px;" data-i18n="add_output">➕ 添加/编辑输出</h3>
-    <div id="outputMsg" class="msg"></div>
-    <div class="form-row">
-      <input type="text" id="outName" placeholder="名称" style="width:120px;">
-      <select id="outPlatform"><option value="bilibili">bilibili</option></select>
-      <select id="outLang">
-        <option value="">(原文直传)</option>
-        <option value="zh-CN">中文 (zh-CN)</option>
-        <option value="en-US">English (en-US)</option>
-        <option value="ja-JP">日本語 (ja-JP)</option>
-        <option value="ko-KR">한국어 (ko-KR)</option>
-        <option value="fr-FR">Français (fr-FR)</option>
-        <option value="de-DE">Deutsch (de-DE)</option>
-        <option value="es-ES">Español (es-ES)</option>
-        <option value="ru-RU">Русский (ru-RU)</option>
-      </select>
-      <select id="outAccount"></select>
-    </div>
-    <div class="form-row">
-      <input type="number" id="outRoom" placeholder="房间号 (0=默认)" style="width:120px;">
-      <input type="text" id="outPrefix" placeholder="前缀" value="【" style="width:100px;">
-      <input type="text" id="outSuffix" placeholder="后缀" value="】" style="width:100px;">
-      <button class="add-btn" onclick="saveOutput()">保存</button>
-    </div>
-  </div>
-</div>
-
-<script>
-document.getElementById('langSwitcherSlot').innerHTML = langSwitcher();
-
-var myStreamers = [];
-var myAccounts = [];
-var cachedOutputs = [];
-var currentStreamer = '';
-
-function escapeHTML(str) {
-  if (!str) return '';
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-async function init() {
-  var meRes = await fetch('/api/me');
-  if (meRes.status === 401) { window.location.href = '/login'; return; }
-  var acctRes = await fetch('/api/my/accounts');
-  myAccounts = await acctRes.json() || [];
-  var statusRes = await fetch('/api/status');
-  var status = await statusRes.json();
-  myStreamers = status.streamers || [];
-  renderTabs();
-  renderAccountDropdown();
-  if (myStreamers.length > 0) {
-    currentStreamer = myStreamers[0].name;
-    selectTab(currentStreamer);
-  }
-}
-
-function renderTabs() {
-  var container = document.getElementById('streamerTabs');
-  container.innerHTML = '';
-  myStreamers.forEach(function(s) {
-    var tab = document.createElement('span');
-    tab.className = 'streamer-tab' + (s.name === currentStreamer ? ' active' : '');
-    tab.textContent = s.name + ' (#' + s.room_id + ')';
-    tab.setAttribute('data-name', s.name);
-    tab.onclick = function() { selectTab(this.getAttribute('data-name')); };
-    container.appendChild(tab);
-  });
-}
-
-function selectTab(name) {
-  currentStreamer = name;
-  document.querySelectorAll('.streamer-tab').forEach(function(t) {
-    t.className = 'streamer-tab' + (t.getAttribute('data-name') === name ? ' active' : '');
-  });
-  loadOutputs();
-}
-
-function renderAccountDropdown() {
-  var sel = document.getElementById('outAccount');
-  sel.innerHTML = '<option value="">(' + t('select_account') + ')</option>';
-  myAccounts.forEach(function(a) {
-    var opt = document.createElement('option');
-    opt.value = a;
-    opt.textContent = a;
-    sel.appendChild(opt);
-  });
-}
-
-async function loadOutputs() {
-  if (!currentStreamer) return;
-  var res = await fetch('/api/my/streamer-outputs?streamer=' + encodeURIComponent(currentStreamer));
-  var outputs = await res.json() || [];
-  cachedOutputs = outputs;
-  var container = document.getElementById('outputsContent');
-  container.innerHTML = '';
-  if (outputs.length === 0) {
-    container.innerHTML = '<p style="text-align:center;color:#666;padding:15px;">' + t('no_streamer_outputs') + '</p>';
-    return;
-  }
-  var table = document.createElement('table');
-  var thead = document.createElement('thead');
-  var hr = document.createElement('tr');
-  [t('name'), t('platform'), t('target_lang'), t('account'), t('room_id'), t('prefix'), t('suffix'), t('actions')].forEach(function(h) {
-    var th = document.createElement('th'); th.textContent = h; hr.appendChild(th);
-  });
-  thead.appendChild(hr); table.appendChild(thead);
-  var tbody = document.createElement('tbody');
-  outputs.forEach(function(o) {
-    var tr = document.createElement('tr');
-    [o.name, o.platform||'bilibili', o.target_lang||'(原文)', o.account||'', String(o.room_id||0), o.prefix||'', o.suffix||''].forEach(function(v) {
-      var td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
-    });
-    var actionTd = document.createElement('td');
-    var editBtn = document.createElement('button');
-    editBtn.className = 'small-btn'; editBtn.textContent = t('edit');
-    editBtn.setAttribute('data-name', o.name);
-    editBtn.onclick = function() { editOutput(this.getAttribute('data-name')); };
-    actionTd.appendChild(editBtn);
-    actionTd.appendChild(document.createTextNode(' '));
-    var delBtn = document.createElement('button');
-    delBtn.className = 'small-btn danger'; delBtn.textContent = t('delete');
-    delBtn.setAttribute('data-name', o.name);
-    delBtn.onclick = function() { deleteOutput(this.getAttribute('data-name')); };
-    actionTd.appendChild(delBtn);
-    tr.appendChild(actionTd);
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody); container.appendChild(table);
-}
-
-async function saveOutput() {
-  if (!currentStreamer) { alert(t('select_streamer')); return; }
-  var name = document.getElementById('outName').value.trim();
-  var msgEl = document.getElementById('outputMsg');
-  if (!name) { msgEl.className = 'msg err'; msgEl.textContent = t('name_required'); return; }
-  var body = {
-    name: name, platform: document.getElementById('outPlatform').value,
-    target_lang: document.getElementById('outLang').value,
-    account: document.getElementById('outAccount').value,
-    room_id: parseInt(document.getElementById('outRoom').value) || 0,
-    prefix: document.getElementById('outPrefix').value,
-    suffix: document.getElementById('outSuffix').value
-  };
-  var res = await fetch('/api/my/streamer-outputs?streamer=' + encodeURIComponent(currentStreamer), {
-    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
-  });
-  if (res.ok) {
-    msgEl.className = 'msg ok'; msgEl.textContent = t('output_saved') + ': ' + name;
-    clearForm(); loadOutputs();
-  } else {
-    var data = await res.json();
-    msgEl.className = 'msg err'; msgEl.textContent = data.error || t('create_failed');
-  }
-}
-
-function editOutput(name) {
-  var o = cachedOutputs.find(function(x) { return x.name === name; });
-  if (!o) return;
-  document.getElementById('outName').value = o.name;
-  document.getElementById('outPlatform').value = o.platform || 'bilibili';
-  document.getElementById('outLang').value = o.target_lang || '';
-  var sel = document.getElementById('outAccount');
-  sel.value = o.account || '';
-  if (sel.value !== (o.account || '') && o.account) {
-    var opt = document.createElement('option'); opt.value = o.account; opt.textContent = o.account;
-    sel.appendChild(opt); sel.value = o.account;
-  }
-  document.getElementById('outRoom').value = o.room_id || 0;
-  document.getElementById('outPrefix').value = o.prefix || '';
-  document.getElementById('outSuffix').value = o.suffix || '';
-  document.getElementById('outName').scrollIntoView({behavior: 'smooth'});
-}
-
-async function deleteOutput(name) {
-  if (!confirm(t('confirm_del_output') + ' ' + name + '?')) return;
-  await fetch('/api/my/streamer-outputs?streamer=' + encodeURIComponent(currentStreamer) + '&name=' + encodeURIComponent(name), {method: 'DELETE'});
-  loadOutputs();
-}
-
-function clearForm() {
-  document.getElementById('outName').value = '';
-  document.getElementById('outLang').selectedIndex = 0;
-  document.getElementById('outAccount').selectedIndex = 0;
-  document.getElementById('outRoom').value = '';
-  document.getElementById('outPrefix').value = '【';
-  document.getElementById('outSuffix').value = '】';
-}
-
-init();
-</script>
-</body>
-</html>`
