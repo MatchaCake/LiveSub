@@ -551,6 +551,31 @@ func (s *Server) handleTranscripts(w http.ResponseWriter, r *http.Request) {
 	if files == nil {
 		files = []transcript.FileInfo{}
 	}
+
+	// Non-admin: filter to assigned rooms only
+	if !u.IsAdmin {
+		rooms, _ := s.store.GetUserRooms(u.ID)
+		if len(rooms) > 0 {
+			roomSet := make(map[string]bool)
+			for _, rid := range rooms {
+				roomSet[fmt.Sprintf("%d_", rid)] = true
+			}
+			var filtered []transcript.FileInfo
+			for _, f := range files {
+				for prefix := range roomSet {
+					if len(f.Name) > len(prefix) && f.Name[:len(prefix)] == prefix {
+						filtered = append(filtered, f)
+						break
+					}
+				}
+			}
+			files = filtered
+			if files == nil {
+				files = []transcript.FileInfo{}
+			}
+		}
+	}
+
 	json.NewEncoder(w).Encode(files)
 }
 
@@ -565,6 +590,23 @@ func (s *Server) handleTranscriptDownload(w http.ResponseWriter, r *http.Request
 	if filename == "" || filepath.Base(filename) != filename {
 		http.Error(w, "invalid filename", 400)
 		return
+	}
+
+	// Non-admin: check room access
+	if !u.IsAdmin {
+		rooms, _ := s.store.GetUserRooms(u.ID)
+		allowed := false
+		for _, rid := range rooms {
+			prefix := fmt.Sprintf("%d_", rid)
+			if len(filename) > len(prefix) && filename[:len(prefix)] == prefix {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			http.Error(w, "forbidden", 403)
+			return
+		}
 	}
 
 	path := filepath.Join(s.transcriptDir, filename)
