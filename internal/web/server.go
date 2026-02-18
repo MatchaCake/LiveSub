@@ -139,6 +139,7 @@ func (s *Server) Start() {
 	mux.HandleFunc("/", s.requireAuth(s.handleIndex))
 	mux.HandleFunc("/api/status", s.requireAuth(s.handleStatus))
 	mux.HandleFunc("/api/toggle", s.requireAuth(s.handleToggle))
+	mux.HandleFunc("/api/skip", s.requireAuth(s.handleSkip))
 	mux.HandleFunc("/api/me", s.requireAuth(s.handleMe))
 	mux.HandleFunc("/api/transcripts", s.requireAuth(s.handleTranscripts))
 	mux.HandleFunc("/api/transcripts/download", s.requireAuth(s.handleTranscriptDownload))
@@ -409,6 +410,27 @@ func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
 	slog.Info("output toggled", "streamer", streamerName, "output", outputName, "paused", paused, "user", u.Username)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"streamer": streamerName, "output": outputName, "paused": paused})
+}
+
+func (s *Server) handleSkip(w http.ResponseWriter, r *http.Request) {
+	streamerName := r.URL.Query().Get("streamer")
+	msgIDStr := r.URL.Query().Get("id")
+	msgID, _ := strconv.ParseInt(msgIDStr, 10, 64)
+
+	s.mu.RLock()
+	rt, ok := s.streamers[streamerName]
+	var ctrl *controller.Controller
+	if ok {
+		ctrl = rt.ctrl
+	}
+	s.mu.RUnlock()
+
+	if ctrl != nil {
+		ctrl.SkipPending(msgID)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "skipped": msgID})
 }
 
 // --- Admin handlers ---
