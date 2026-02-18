@@ -79,6 +79,10 @@ func run(cfgPath string) error {
 	}
 	defer translator.Close()
 
+	// Shared translation worker pool
+	pool := newTranslatePool(ctx, translator, 3)
+	defer pool.close()
+
 	// Build room → stream config mapping
 	streamMap := make(map[int64]config.StreamConfig)
 	roomIDs := make([]int64, 0, len(cfg.Streams))
@@ -118,7 +122,7 @@ func run(cfgPath string) error {
 				mu.Unlock()
 
 				go func(sc config.StreamConfig, streamCtx context.Context, streamCancel context.CancelFunc) {
-					if err := runStream(streamCtx, cfg, sc, translator); err != nil {
+					if err := runStream(streamCtx, cfg, sc, translator, pool); err != nil {
 						slog.Error("stream ended", "name", sc.Name, "err", err)
 					}
 					streamCancel()
@@ -141,7 +145,7 @@ func run(cfgPath string) error {
 	return mon.Watch(ctx, roomIDs, events)
 }
 
-func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, translator *translate.GeminiTranslator) error {
+func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, translator *translate.GeminiTranslator, pool *translatePool) error {
 	// 1. Get live stream URL
 	streamURL, err := audio.GetBilibiliStreamURL(sc.RoomID)
 	if err != nil {
@@ -208,61 +212,18 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 		targetLang = cfg.Gemini.TargetLang
 	}
 
-	// Parallel translate → ordered send pipeline
-	type translatedMsg struct {
-		seq  int
-		text string
-	}
-
-	const numWorkers = 3
-	type translateJob struct {
-		seq    int
-		text   string
-		lang   string
-		direct bool // already in target lang, skip translation
-	}
-
-	jobCh := make(chan translateJob, 50)
-	doneCh := make(chan translatedMsg, 50)
-
-	// Translation workers (parallel)
-	var workerWg sync.WaitGroup
-	for i := 0; i < numWorkers; i++ {
-		workerWg.Add(1)
-		go func(id int) {
-			defer workerWg.Done()
-			for job := range jobCh {
-				if job.direct {
-					doneCh <- translatedMsg{seq: job.seq, text: job.text}
-					continue
-				}
-				translated, err := translator.Translate(ctx, job.text, job.lang)
-				if err != nil {
-					slog.Error("translate error", "worker", id, "name", sc.Name, "err", err)
-					doneCh <- translatedMsg{seq: job.seq, text: ""}
-					continue
-				}
-				if translated != "" {
-					slog.Info("📝 translated", "worker", id, "name", sc.Name, "src", job.text, "dst", translated)
-				}
-				doneCh <- translatedMsg{seq: job.seq, text: translated}
-			}
-		}(i)
-	}
-
-	// Close doneCh when all workers finish
-	go func() {
-		workerWg.Wait()
-		close(doneCh)
-	}()
+	// Per-stream result channel for ordered sending
+	doneCh := make(chan translateResult, 50)
 
 	// Ordered sender: buffer out-of-order results, send in sequence
+	var senderWg sync.WaitGroup
+	senderWg.Add(1)
 	go func() {
+		defer senderWg.Done()
 		nextSeq := 0
 		pending := make(map[int]string)
 		for msg := range doneCh {
 			pending[msg.seq] = msg.text
-			// Flush consecutive ready messages
 			for {
 				text, ok := pending[nextSeq]
 				if !ok {
@@ -281,7 +242,7 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 		}
 	}()
 
-	// Dispatch STT results to workers
+	// Dispatch STT results to shared pool
 	seq := 0
 	for result := range resultsCh {
 		if !result.IsFinal {
@@ -293,17 +254,79 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 			slog.Info("📝 direct", "name", sc.Name, "text", result.Text, "lang", result.Language)
 		}
 
-		jobCh <- translateJob{
+		pool.submit(translateJob{
 			seq:    seq,
 			text:   result.Text,
 			lang:   result.Language,
+			name:   sc.Name,
 			direct: direct,
-		}
+			doneCh: doneCh,
+		})
 		seq++
 	}
-	close(jobCh)
+	close(doneCh)
+	senderWg.Wait()
 
 	return nil
+}
+
+// --- Shared translation pool ---
+
+type translateResult struct {
+	seq  int
+	text string
+}
+
+type translateJob struct {
+	seq    int
+	text   string
+	lang   string
+	name   string // stream name for logging
+	direct bool
+	doneCh chan<- translateResult
+}
+
+type translatePool struct {
+	jobCh chan translateJob
+	wg    sync.WaitGroup
+}
+
+func newTranslatePool(ctx context.Context, translator *translate.GeminiTranslator, workers int) *translatePool {
+	p := &translatePool{
+		jobCh: make(chan translateJob, 100),
+	}
+	for i := 0; i < workers; i++ {
+		p.wg.Add(1)
+		go func(id int) {
+			defer p.wg.Done()
+			for job := range p.jobCh {
+				if job.direct {
+					job.doneCh <- translateResult{seq: job.seq, text: job.text}
+					continue
+				}
+				translated, err := translator.Translate(ctx, job.text, job.lang)
+				if err != nil {
+					slog.Error("translate error", "worker", id, "name", job.name, "err", err)
+					job.doneCh <- translateResult{seq: job.seq, text: ""}
+					continue
+				}
+				if translated != "" {
+					slog.Info("📝 translated", "worker", id, "name", job.name, "src", job.text, "dst", translated)
+				}
+				job.doneCh <- translateResult{seq: job.seq, text: translated}
+			}
+		}(i)
+	}
+	return p
+}
+
+func (p *translatePool) submit(job translateJob) {
+	p.jobCh <- job
+}
+
+func (p *translatePool) close() {
+	close(p.jobCh)
+	p.wg.Wait()
 }
 
 func isTargetLang(detected, target string) bool {
