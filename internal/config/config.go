@@ -18,10 +18,10 @@ type Config struct {
 }
 
 type StreamerConfig struct {
-	Name       string   `yaml:"name"`
-	RoomID     int64    `yaml:"room_id"`
-	SourceLang string   `yaml:"source_lang"` // primary STT language (e.g. "ja-JP")
-	AltLangs   []string `yaml:"alt_langs"`   // additional detection languages
+	Name       string   `yaml:"name" json:"name"`
+	RoomID     int64    `yaml:"room_id" json:"room_id"`
+	SourceLang string   `yaml:"source_lang" json:"source_lang"` // primary STT language (e.g. "ja-JP")
+	AltLangs   []string `yaml:"alt_langs" json:"alt_langs"`     // additional detection languages
 }
 
 type STTConfig struct {
@@ -36,13 +36,13 @@ type TranslationConfig struct {
 }
 
 type OutputConfig struct {
-	Name       string `yaml:"name"`
-	Platform   string `yaml:"platform"`    // "bilibili"
-	TargetLang string `yaml:"target_lang"` // empty = send source text (no translation)
-	Account    string `yaml:"account"`     // bot name reference
-	RoomID     int64  `yaml:"room_id"`     // 0 = use streamer's room_id
-	Prefix     string `yaml:"prefix"`
-	Suffix     string `yaml:"suffix"`
+	Name       string `yaml:"name" json:"name"`
+	Platform   string `yaml:"platform" json:"platform"`          // "bilibili"
+	TargetLang string `yaml:"target_lang" json:"target_lang"`    // empty = send source text (no translation)
+	Account    string `yaml:"account" json:"account"`            // bot name reference
+	RoomID     int64  `yaml:"room_id" json:"room_id"`            // 0 = use streamer's room_id
+	Prefix     string `yaml:"prefix" json:"prefix"`
+	Suffix     string `yaml:"suffix" json:"suffix"`
 }
 
 type BotConfig struct {
