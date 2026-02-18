@@ -250,7 +250,8 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}()
 
 	// Dispatch STT results to shared pool
-	// Music detection: skip translation when BGM is detected via spectral analysis
+	// Music detection: spectral analysis + long text heuristic
+	// Skip when: music detected OR (borderline music + long lyrics-like text)
 
 	seq := 0
 	for result := range resultsCh {
@@ -260,17 +261,23 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 
 		musicScore := musicDetector.Score()
 		isMusic := musicDetector.IsMusic()
+		textLen := len([]rune(result.Text))
 
-		if isMusic {
+		// Hard skip: clear music
+		// Soft skip: borderline score (0.25+) AND long text (>60 chars, likely lyrics)
+		softSkip := musicScore > 0.25 && textLen > 60
+
+		if isMusic || softSkip {
 			slog.Info("🎵 skipping (music detected)", "name", sc.Name,
 				"text", result.Text, "score", fmt.Sprintf("%.2f", musicScore),
-				"conf", result.Confidence)
+				"conf", result.Confidence, "len", textLen,
+				"hard", isMusic, "soft", softSkip)
 			continue
 		}
 
 		slog.Info("📊 dispatch", "name", sc.Name,
 			"musicScore", fmt.Sprintf("%.2f", musicScore),
-			"conf", result.Confidence, "text", result.Text)
+			"conf", result.Confidence, "len", textLen, "text", result.Text)
 
 		direct := isTargetLang(result.Language, targetLang)
 		if direct {

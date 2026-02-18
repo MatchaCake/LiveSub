@@ -26,9 +26,9 @@ func NewMusicDetector(sampleRate int) *MusicDetector {
 		sampleRate: sampleRate,
 		windowSize: 2048,        // ~128ms at 16kHz
 		hopSize:    1024,        // ~64ms hop
-		threshold:  0.55,        // tunable
-		history:    make([]float64, 0, 16),
-		histSize:   8,           // smooth over ~0.5s
+		threshold:  0.35,        // lowered: catch softer BGM sections
+		history:    make([]float64, 0, 32),
+		histSize:   16,          // smooth over ~1s for stability
 	}
 }
 
