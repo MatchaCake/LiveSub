@@ -21,3 +21,4 @@ configs/users.db-shm
 configs/users.db-wal
 configs/transcripts/
 logs/
+*.bak
