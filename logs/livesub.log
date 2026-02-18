@@ -1532,3 +1532,17 @@ time=2026-02-18T11:26:35.164+08:00 level=INFO msg="STT final" text="この後に
 time=2026-02-18T11:26:35.164+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text="この後に歌うの なんかやだな。" len=15 musicScore=0.82 conf=0.734046459197998
 time=2026-02-18T11:26:47.903+08:00 level=INFO msg="STT final" text=仲がいい存分に。 lang=ja-jp confidence=0.5415114164352417
 time=2026-02-18T11:26:47.903+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=仲がいい存分に。 len=8 musicScore=0.77 conf=0.5415114164352417
+time=2026-02-18T11:27:13.638+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T11:27:13.638+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T11:27:13.653+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041]
+time=2026-02-18T11:27:13.653+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T11:27:13.766+08:00 level=INFO msg="room went LIVE" room=14988041 title=正在调试
+time=2026-02-18T11:27:13.766+08:00 level=INFO msg="🎙️ room went live, starting pipeline" name="Test Stream" room=14988041 title=正在调试
+time=2026-02-18T11:27:13.843+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
+time=2026-02-18T11:27:13.844+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/511067/live_295893148_2747772.flv
+time=2026-02-18T11:27:28.427+08:00 level=INFO msg="STT final" text="伝えたくて ぬくもりと痛みに間に合うようにこのまま続くと思っていた僕らの明日も描いていた。" lang=ja-jp confidence=0.8242486119270325
+time=2026-02-18T11:27:28.427+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.8242486119270325 len=45 musicScore=0.92 text="伝えたくて ぬくもりと痛みに間に合うようにこのまま続くと思っていた僕らの明日も描いていた。"
+time=2026-02-18T11:27:29.591+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src="伝えたくて ぬくもりと痛みに間に合うようにこのまま続くと思っていた僕らの明日も描いていた。" dst=想告诉你，趁着温暖和痛楚还未消散，我们曾以为理所当然的明天，我也曾描绘过。
+time=2026-02-18T11:27:29.591+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=0 text=想告诉你，趁着温暖和痛楚还未消散，我们曾以为理所当然的明天，我也曾描绘过。
+time=2026-02-18T11:27:29.814+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【想告诉你，趁着温暖和痛楚还未消散，我们曾以为理所当然的明】
+time=2026-02-18T11:27:35.044+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【天，我也曾描绘过。】
