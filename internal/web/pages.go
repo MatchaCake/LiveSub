@@ -370,7 +370,7 @@ const adminHTML = `<!DOCTYPE html>
       <input type="number" id="sRoom" placeholder="房间号" style="width:120px;">
       <select id="sLang">
         <option value="ja-JP">日本語 (ja)</option>
-        <option value="zh-CN">中文 (zh)</option>
+        <option value="zh">中文 (zh)</option>
         <option value="en-US">English (en)</option>
         <option value="ko-KR">한국어 (ko)</option>
         <option value="fr-FR">Français (fr)</option>
@@ -402,7 +402,6 @@ const adminHTML = `<!DOCTYPE html>
       <select id="outLang">
         <option value="">(原文直传)</option>
         <option value="zh">中文 (zh)</option>
-        <option value="zh-CN">中文 (zh-CN)</option>
         <option value="en">English (en)</option>
         <option value="ja">日本語 (ja)</option>
         <option value="ko">한국어 (ko)</option>
