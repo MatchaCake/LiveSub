@@ -163,6 +163,27 @@ func run(cfgPath string) error {
 			mon.AddRooms(addedIDs)
 		}
 
+		// Update danmaku accounts on all active senders
+		if len(newCfg.Bilibili.Accounts) > 0 {
+			for _, sc := range newCfg.Streams {
+				if sender := rc.GetSender(sc.RoomID); sender != nil {
+					var accounts []danmaku.Account
+					// Default account first
+					accounts = append(accounts, danmaku.Account{
+						Name: "默认", SESSDATA: newCfg.Bilibili.SESSDATA,
+						BiliJCT: newCfg.Bilibili.BiliJCT, UID: newCfg.Bilibili.UID,
+					})
+					for _, acc := range newCfg.Bilibili.Accounts {
+						accounts = append(accounts, danmaku.Account{
+							Name: acc.Name, SESSDATA: acc.SESSDATA,
+							BiliJCT: acc.BiliJCT, UID: acc.UID,
+						})
+					}
+					sender.SetAccounts(accounts)
+				}
+			}
+		}
+
 		slog.Info("🔄 streams reloaded",
 			"total", len(newCfg.Streams),
 			"added", len(addedIDs),
@@ -247,7 +268,7 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}
 	defer sttClient.Close()
 
-	// 4. Danmaku sender
+	// 4. Danmaku sender (multi-account)
 	sender := danmaku.NewBilibiliSender(
 		sc.RoomID,
 		cfg.Bilibili.SESSDATA,
@@ -257,6 +278,16 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	if cfg.Bilibili.DanmakuMax > 0 {
 		sender.MaxLength = cfg.Bilibili.DanmakuMax
 	}
+	// Add extra accounts from config
+	for _, acc := range cfg.Bilibili.Accounts {
+		sender.AddAccount(danmaku.Account{
+			Name:     acc.Name,
+			SESSDATA: acc.SESSDATA,
+			BiliJCT:  acc.BiliJCT,
+			UID:      acc.UID,
+		})
+	}
+	rc.SetSender(sc.RoomID, sender)
 
 	// Pipeline: STT → Translate → Send
 	// Use a pausable reader that discards audio when paused (saves STT cost)

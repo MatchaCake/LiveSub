@@ -35,10 +35,18 @@ type GeminiConfig struct {
 }
 
 type BilibiliConfig struct {
-	SESSDATA     string `yaml:"sessdata"`
-	BiliJCT      string `yaml:"bili_jct"`      // csrf token
-	UID          int64  `yaml:"uid"`            // user id
-	DanmakuMax   int    `yaml:"danmaku_max"`   // max chars per danmaku (default 20, UL20+=30)
+	SESSDATA     string            `yaml:"sessdata"`
+	BiliJCT      string            `yaml:"bili_jct"`      // csrf token
+	UID          int64             `yaml:"uid"`            // user id
+	DanmakuMax   int               `yaml:"danmaku_max"`   // max chars per danmaku (default 20, UL20+=30)
+	Accounts     []BilibiliAccount `yaml:"accounts"`       // multiple accounts for failover
+}
+
+type BilibiliAccount struct {
+	Name     string `yaml:"name"`      // display name
+	SESSDATA string `yaml:"sessdata"`
+	BiliJCT  string `yaml:"bili_jct"`
+	UID      int64  `yaml:"uid"`
 }
 
 type StreamConfig struct {

@@ -3077,3 +3077,24 @@ time=2026-02-18T12:52:56.100+08:00 level=INFO msg="audio capture stopped"
 time=2026-02-18T12:53:00.906+08:00 level=INFO msg="user logged in" username=admin ip=192.168.1.120:11317
 time=2026-02-18T12:54:04.010+08:00 level=INFO msg="shutting down..."
 time=2026-02-18T12:54:04.010+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T12:54:04.037+08:00 level=INFO msg="web auth enabled" username=admin
+time=2026-02-18T12:54:04.037+08:00 level=INFO msg="web control panel started" addr=:8899
+time=2026-02-18T12:54:04.037+08:00 level=INFO msg="livesub started" streams=3 rooms="[14988041 21396545 22959964]" web=http://localhost:8899
+time=2026-02-18T12:54:04.037+08:00 level=INFO msg="monitor: added room" room=14988041
+time=2026-02-18T12:54:04.037+08:00 level=INFO msg="monitor: added room" room=21396545
+time=2026-02-18T12:54:04.037+08:00 level=INFO msg="monitor: added room" room=22959964
+time=2026-02-18T12:54:04.037+08:00 level=INFO msg="bilibili monitor started" rooms=3 interval=30s
+time=2026-02-18T12:54:09.528+08:00 level=INFO msg="user logged in" username=admin ip=192.168.1.120:14578
+time=2026-02-18T12:58:24.693+08:00 level=INFO msg="user logged in" username=admin ip=192.168.1.114:42720
+time=2026-02-18T13:19:32.644+08:00 level=INFO msg="user logged in" username=admin ip=192.168.1.114:46524
+time=2026-02-18T13:20:29.680+08:00 level=INFO msg="room toggled" room=21396545 paused=true
+time=2026-02-18T13:20:33.404+08:00 level=INFO msg="room toggled" room=21396545 paused=false
+time=2026-02-18T13:30:27.184+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T13:30:27.184+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T13:30:27.212+08:00 level=INFO msg="web auth enabled" username=admin
+time=2026-02-18T13:30:27.212+08:00 level=INFO msg="web control panel started" addr=:8899
+time=2026-02-18T13:30:27.212+08:00 level=INFO msg="livesub started" streams=3 rooms="[14988041 21396545 22959964]" web=http://localhost:8899
+time=2026-02-18T13:30:27.213+08:00 level=INFO msg="monitor: added room" room=14988041
+time=2026-02-18T13:30:27.213+08:00 level=INFO msg="monitor: added room" room=21396545
+time=2026-02-18T13:30:27.213+08:00 level=INFO msg="monitor: added room" room=22959964
+time=2026-02-18T13:30:27.213+08:00 level=INFO msg="bilibili monitor started" rooms=3 interval=30s
