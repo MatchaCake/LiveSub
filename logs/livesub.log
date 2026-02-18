@@ -935,3 +935,75 @@ time=2026-02-18T10:47:20.626+08:00 level=INFO msg="STT final" text="" lang=ja-jp
 time=2026-02-18T10:47:42.625+08:00 level=INFO msg="STT final" text="染めてもさーで0226 だってもうすぐ出して。" lang=ja-jp confidence=0.3231654167175293
 time=2026-02-18T10:47:43.422+08:00 level=INFO msg="📝 translated" name="Test Stream" src="染めてもさーで0226 だってもうすぐ出して。" dst=染了之后，0226马上就要出来了。 lang=ja-jp
 time=2026-02-18T10:47:43.655+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【染了之后，0226马上就要出来了。】
+time=2026-02-18T10:47:57.350+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T10:47:57.350+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T10:47:57.367+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041]
+time=2026-02-18T10:47:57.367+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T10:47:57.547+08:00 level=INFO msg="room went LIVE" room=14988041 title=正在调试
+time=2026-02-18T10:47:57.547+08:00 level=INFO msg="🎙️ room went live, starting pipeline" name="Test Stream" room=14988041 title=正在调试
+time=2026-02-18T10:47:57.624+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
+time=2026-02-18T10:47:57.624+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/878128/live_295893148_2747772.flv
+time=2026-02-18T10:48:28.984+08:00 level=INFO msg="STT final" text="そこに移して言葉が凍えそうな距離が悲しい。世界中を驚かせ続けよう 離れた足がそう言いなさい。甘くて苦くて目が回りそうです。7歳を目指してパーティを続けよう。世界中を驚かせてしまう。夜になってるでしょ。" lang=ja-jp confidence=0.23718924820423126
+time=2026-02-18T10:48:30.482+08:00 level=INFO msg="📝 translated" name="Test Stream" src="そこに移して言葉が凍えそうな距離が悲しい。世界中を驚かせ続けよう 離れた足がそう言いなさい。甘くて苦くて目が回りそうです。7歳を目指してパーティを続けよう。世界中を驚かせてしまう。夜になってるでしょ。" dst=搬过去，说话的距离让人心寒，好难过。继续惊艳世界吧！迈开脚步，就这样说。又甜又苦，天旋地转。奔向7岁，继续狂欢！惊艳全世界！已经晚上了吧。 lang=ja-jp
+time=2026-02-18T10:48:30.673+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【搬过去，说话的距离让人心寒，好难过。继续惊艳世界吧！迈开】
+time=2026-02-18T10:48:35.893+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【脚步，就这样说。又甜又苦，天旋地转。奔向7岁，继续狂欢！】
+time=2026-02-18T10:48:41.105+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【惊艳全世界！已经晚上了吧。】
+time=2026-02-18T10:48:46.955+08:00 level=INFO msg="STT final" text=" ちゃんと最後。" lang=ja-jp confidence=0.37901902198791504
+time=2026-02-18T10:48:47.928+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" ちゃんと最後。" dst=好好收尾。 lang=ja-jp
+time=2026-02-18T10:48:48.130+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【好好收尾。】
+time=2026-02-18T10:48:49.848+08:00 level=INFO msg="STT final" text=" 最高、ありがとう。姿勢" lang=ja-jp confidence=0.30323219299316406
+time=2026-02-18T10:48:50.914+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 最高、ありがとう。姿勢" dst=太棒了，谢谢，姿势很帅。 lang=ja-jp
+time=2026-02-18T10:48:53.351+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【太棒了，谢谢，姿势很帅。】
+time=2026-02-18T10:48:58.581+08:00 level=INFO msg="STT final" text=" 何 びっくりした。急に急にカラオケ 分析 結果。" lang=ja-jp confidence=0.5434833765029907
+time=2026-02-18T10:49:00.038+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 何 びっくりした。急に急にカラオケ 分析 結果。" dst=哎，吓一跳。突然冒出来个卡拉OK分析结果。 lang=ja-jp
+time=2026-02-18T10:49:00.234+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【哎，吓一跳。突然冒出来个卡拉OK分析结果。】
+time=2026-02-18T10:49:01.479+08:00 level=INFO msg="STT final" text=" そんなんないやろ。" lang=ja-jp confidence=0.6386116147041321
+time=2026-02-18T10:49:02.257+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" そんなんないやろ。" dst=不可能吧。 lang=ja-jp
+time=2026-02-18T10:49:05.436+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【不可能吧。】
+time=2026-02-18T10:49:09.479+08:00 level=INFO msg="STT final" text="だいぶ 喉 開いてきたね。" lang=ja-jp confidence=0.933799684047699
+time=2026-02-18T10:49:10.283+08:00 level=INFO msg="📝 translated" name="Test Stream" src="だいぶ 喉 開いてきたね。" dst=嗓子打开了呢。 lang=ja-jp
+time=2026-02-18T10:49:10.636+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【嗓子打开了呢。】
+time=2026-02-18T10:49:15.440+08:00 level=INFO msg="STT final" text="難聴の声が高齢になるとね。だいぶ 喉 開いてきたよ。っていう。" lang=ja-jp confidence=0.9162242412567139
+time=2026-02-18T10:49:16.350+08:00 level=INFO msg="📝 translated" name="Test Stream" src="難聴の声が高齢になるとね。だいぶ 喉 開いてきたよ。っていう。" dst=年纪大了听力不好。感觉嗓子也打开了。 lang=ja-jp
+time=2026-02-18T10:49:16.528+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【年纪大了听力不好。感觉嗓子也打开了。】
+time=2026-02-18T10:49:33.227+08:00 level=INFO msg="STT final" text=" ハヒフヘホーさん 死には帰ろう。あけましておめでとうございます。待ってる。待ってる。待ってる。待ってる。待ってる。" lang=ja-jp confidence=0.19852647185325623
+time=2026-02-18T10:49:34.125+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" ハヒフヘホーさん 死には帰ろう。あけましておめでとうございます。待ってる。待ってる。待ってる。待ってる。待ってる。" dst=ハヒフヘホー，去死吧。新年快乐。我等着。我等着。我等着。我等着。我等着。 lang=ja-jp
+time=2026-02-18T10:49:34.314+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【ハヒフヘホー，去死吧。新年快乐。我等着。我等着。我等着。】
+time=2026-02-18T10:49:35.254+08:00 level=INFO msg="STT final" text=" うん。" lang=ja-jp confidence=0.1914295256137848
+time=2026-02-18T10:49:39.014+08:00 level=INFO msg="STT final" text=" 待ってて。" lang=ja-jp confidence=0.3856390118598938
+time=2026-02-18T10:49:39.523+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【我等着。我等着。】
+time=2026-02-18T10:49:40.169+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" うん。" dst=嗯。 lang=ja-jp
+time=2026-02-18T10:49:44.749+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【嗯。】
+time=2026-02-18T10:49:45.412+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 待ってて。" dst=等一下。 lang=ja-jp
+time=2026-02-18T10:49:49.907+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【等一下。】
+time=2026-02-18T10:50:00.124+08:00 level=INFO msg="STT final" text=" 手紙 はい 95の君家。" lang=ja-jp confidence=0.2691281735897064
+time=2026-02-18T10:50:00.819+08:00 level=ERROR msg="translate error" name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T10:50:04.330+08:00 level=INFO msg="STT final" text=" よいしょ！" lang=ja-jp confidence=0.4773819148540497
+time=2026-02-18T10:50:05.136+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" よいしょ！" dst=好嘞！ lang=ja-jp
+time=2026-02-18T10:50:05.332+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【好嘞！】
+time=2026-02-18T10:50:09.085+08:00 level=INFO msg="STT final" text=" さあ、トイレットペーパー？" lang=ja-jp confidence=0.6758715510368347
+time=2026-02-18T10:50:10.050+08:00 level=ERROR msg="translate error" name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T10:50:11.340+08:00 level=INFO msg="STT final" text=" じゃあ 行こう！" lang=ja-jp confidence=0.3021101653575897
+time=2026-02-18T10:50:12.213+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" じゃあ 行こう！" dst=走吧！ lang=ja-jp
+time=2026-02-18T10:50:12.393+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【走吧！】
+time=2026-02-18T10:50:31.151+08:00 level=INFO msg="STT final" text=背景この手紙。 lang=ja-jp confidence=0.9190322756767273
+time=2026-02-18T10:50:31.988+08:00 level=INFO msg="📝 translated" name="Test Stream" src=背景この手紙。 dst=背景这封信。 lang=ja-jp
+time=2026-02-18T10:50:32.144+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【背景这封信。】
+time=2026-02-18T10:50:53.350+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T10:50:53.350+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T10:50:53.368+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041]
+time=2026-02-18T10:50:53.368+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T10:50:53.563+08:00 level=INFO msg="room went LIVE" room=14988041 title=正在调试
+time=2026-02-18T10:50:53.563+08:00 level=INFO msg="🎙️ room went live, starting pipeline" name="Test Stream" room=14988041 title=正在调试
+time=2026-02-18T10:50:53.648+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
+time=2026-02-18T10:50:53.648+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/879101/live_295893148_2747772.flv
+time=2026-02-18T10:52:43.849+08:00 level=INFO msg="STT final" text=だね。 lang=ja-jp confidence=0.8768342733383179
+time=2026-02-18T10:52:44.970+08:00 level=INFO msg="📝 translated" name="Test Stream" src=だね。 dst=是呢。 lang=ja-jp
+time=2026-02-18T10:52:45.127+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【是呢。】
+time=2026-02-18T10:52:49.571+08:00 level=INFO msg="STT final" text="難聴の声が高齢になるとね。だいぶ 喉 開いてきたよ。っていう。" lang=ja-jp confidence=0.9465005397796631
+time=2026-02-18T10:52:50.735+08:00 level=INFO msg="📝 translated" name="Test Stream" src="難聴の声が高齢になるとね。だいぶ 喉 開いてきたよ。っていう。" dst="年纪大了，听力不太好。 感觉嗓子也开了。" lang=ja-jp
+time=2026-02-18T10:52:50.912+08:00 level=INFO msg="danmaku sent" room=14988041 msg="【年纪大了，听力不太好。 感觉嗓子也开了。】"
+time=2026-02-18T10:53:07.069+08:00 level=INFO msg="STT final" text=" ハヒフヘホーさん 死には帰ろう。あけましておめでとうございます。待ってる。待ってる。待ってる。待ってる。待ってる。" lang=ja-jp confidence=0.1944180130958557
+time=2026-02-18T10:53:08.146+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" ハヒフヘホーさん 死には帰ろう。あけましておめでとうございます。待ってる。待ってる。待ってる。待ってる。待ってる。" dst=哈希夫黑霍桑，一路走好。新年快乐，等你。等你。等你。等你。等你。 lang=ja-jp
+time=2026-02-18T10:53:08.353+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【哈希夫黑霍桑，一路走好。新年快乐，等你。等你。等你。等你】
+time=2026-02-18T10:53:13.546+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【。等你。】

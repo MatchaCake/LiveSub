@@ -157,13 +157,16 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}
 	slog.Info("got stream URL", "name", sc.Name, "room", sc.RoomID)
 
-	// 2. Audio capture via ffmpeg
+	// 2. Audio capture via ffmpeg + music detection
 	capturer := audio.NewCapturer()
-	audioReader, err := capturer.Start(ctx, streamURL)
+	rawReader, err := capturer.Start(ctx, streamURL)
 	if err != nil {
 		return fmt.Errorf("start audio: %w", err)
 	}
-	defer audioReader.Close()
+	defer rawReader.Close()
+
+	musicDetector := audio.NewMusicDetector(16000)
+	audioReader := audio.NewAnalyzingReader(rawReader, musicDetector)
 
 	// 3. STT
 	sttClient, err := stt.NewGoogleSTT(ctx, sc.SourceLang, sc.AltLangs)
@@ -247,11 +250,7 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}()
 
 	// Dispatch STT results to shared pool
-	// Low confidence buffering: hold 1 result, if next is also low → discard both
-	// If next is normal → flush held + current
-	const minConfidence = float32(0.75)
-
-	var held *stt.StreamResult // buffered low-confidence result
+	// Music detection: skip translation when BGM is detected via spectral analysis
 
 	seq := 0
 	for result := range resultsCh {
@@ -259,37 +258,19 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 			continue
 		}
 
-		isLow := result.Confidence > 0 && result.Confidence < minConfidence
+		musicScore := musicDetector.Score()
+		isMusic := musicDetector.IsMusic()
 
-		if isLow {
-			if held != nil {
-				// Two consecutive low → discard both
-				slog.Info("🎵 dropping consecutive low confidence", "name", sc.Name,
-					"dropped", held.Text, "conf1", held.Confidence,
-					"also", result.Text, "conf2", result.Confidence)
-				held = nil
-				// Keep holding: this one becomes the new held
-			}
-			r := result
-			held = &r
+		if isMusic {
+			slog.Info("🎵 skipping (music detected)", "name", sc.Name,
+				"text", result.Text, "score", fmt.Sprintf("%.2f", musicScore),
+				"conf", result.Confidence)
 			continue
 		}
 
-		// Current is normal — flush held if any
-		if held != nil {
-			slog.Info("📝 flushing held result", "name", sc.Name, "text", held.Text, "conf", held.Confidence)
-			hDirect := isTargetLang(held.Language, targetLang)
-			pool.submit(translateJob{
-				seq:    seq,
-				text:   held.Text,
-				lang:   held.Language,
-				name:   sc.Name,
-				direct: hDirect,
-				doneCh: doneCh,
-			})
-			seq++
-			held = nil
-		}
+		slog.Info("📊 dispatch", "name", sc.Name,
+			"musicScore", fmt.Sprintf("%.2f", musicScore),
+			"conf", result.Confidence, "text", result.Text)
 
 		direct := isTargetLang(result.Language, targetLang)
 		if direct {
