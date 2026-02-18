@@ -242,6 +242,7 @@ func (c *Controller) run(ctx context.Context) {
 
 // splitWithWrap splits text into chunks where each chunk is wrapped with prefix+suffix
 // and fits within maxLen runes. If maxLen <= 0, returns a single wrapped string.
+// For text containing spaces (e.g. English), splits at word boundaries.
 func splitWithWrap(text, prefix, suffix string, maxLen int) []string {
 	wrapped := prefix + text + suffix
 	if maxLen <= 0 || len([]rune(wrapped)) <= maxLen {
@@ -252,18 +253,28 @@ func splitWithWrap(text, prefix, suffix string, maxLen int) []string {
 	suffixRunes := len([]rune(suffix))
 	contentMax := maxLen - prefixRunes - suffixRunes
 	if contentMax <= 0 {
-		// prefix+suffix already exceed maxLen, just send wrapped
 		return []string{wrapped}
 	}
 
 	runes := []rune(text)
 	var chunks []string
-	for i := 0; i < len(runes); i += contentMax {
+	i := 0
+	for i < len(runes) {
 		end := i + contentMax
-		if end > len(runes) {
-			end = len(runes)
+		if end >= len(runes) {
+			chunks = append(chunks, prefix+string(runes[i:])+suffix)
+			break
 		}
-		chunks = append(chunks, prefix+string(runes[i:end])+suffix)
+		// Try to break at a space (for languages with word boundaries)
+		breakAt := end
+		for j := end - 1; j > i+contentMax/2; j-- {
+			if runes[j] == ' ' || runes[j] == '、' || runes[j] == '，' || runes[j] == '。' {
+				breakAt = j + 1
+				break
+			}
+		}
+		chunks = append(chunks, prefix+string(runes[i:breakAt])+suffix)
+		i = breakAt
 	}
 	return chunks
 }
