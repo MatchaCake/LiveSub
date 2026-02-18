@@ -138,6 +138,8 @@ func (s *Server) Start() {
 	mux.HandleFunc("/api/me", s.requireAuth(s.handleMe))
 	mux.HandleFunc("/api/transcripts", s.requireAuth(s.handleTranscripts))
 	mux.HandleFunc("/api/transcripts/download", s.requireAuth(s.handleTranscriptDownload))
+	mux.HandleFunc("/api/my/streamer-outputs", s.requireAuth(s.handleMyStreamerOutputs))
+	mux.HandleFunc("/api/my/accounts", s.requireAuth(s.handleMyAccounts))
 
 	// Admin only
 	mux.HandleFunc("/admin", s.requireAdmin(s.handleAdminPage))
@@ -858,6 +860,165 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 		}
 		if req.Platform == "" {
 			req.Platform = "bilibili"
+		}
+		found := false
+		for i, o := range sc.Outputs {
+			if o.Name == req.Name {
+				sc.Outputs[i] = req
+				found = true
+				break
+			}
+		}
+		if !found {
+			sc.Outputs = append(sc.Outputs, req)
+		}
+		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			http.Error(w, `{"error":"save failed"}`, 500)
+			return
+		}
+		action := "add_output"
+		if found {
+			action = "update_output"
+		}
+		s.audit(r, action, fmt.Sprintf("%s / %s lang=%s", streamerName, req.Name, req.TargetLang))
+		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+
+	case "DELETE":
+		outputName := r.URL.Query().Get("name")
+		if outputName == "" {
+			http.Error(w, `{"error":"output name required"}`, 400)
+			return
+		}
+		newOutputs := make([]config.OutputConfig, 0)
+		for _, o := range sc.Outputs {
+			if o.Name != outputName {
+				newOutputs = append(newOutputs, o)
+			}
+		}
+		sc.Outputs = newOutputs
+		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			http.Error(w, `{"error":"save failed"}`, 500)
+			return
+		}
+		s.audit(r, "delete_output", fmt.Sprintf("%s / %s", streamerName, outputName))
+		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, 405)
+	}
+}
+
+// handleMyAccounts returns accounts available to the current user.
+// Admin gets all accounts; regular users get their assigned ones.
+func (s *Server) handleMyAccounts(w http.ResponseWriter, r *http.Request) {
+	u := s.getUser(r)
+	if u == nil {
+		http.Error(w, `{"error":"unauthorized"}`, 401)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	if u.IsAdmin {
+		// Admin: all accounts (same as all-accounts)
+		names := s.pool.Names()
+		if dbAccounts, err := s.store.ListBiliAccountSummaries(); err == nil {
+			seen := make(map[string]bool)
+			for _, n := range names {
+				seen[n] = true
+			}
+			for _, a := range dbAccounts {
+				if !seen[a.Name] {
+					names = append(names, a.Name)
+				}
+			}
+		}
+		json.NewEncoder(w).Encode(names)
+		return
+	}
+
+	accts, _ := s.store.GetUserAccounts(u.ID)
+	if accts == nil {
+		accts = []string{}
+	}
+	json.NewEncoder(w).Encode(accts)
+}
+
+// handleMyStreamerOutputs lets authenticated users manage outputs for their assigned rooms.
+// Admins can access all rooms.
+func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request) {
+	u := s.getUser(r)
+	if u == nil {
+		http.Error(w, `{"error":"unauthorized"}`, 401)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	streamerName := r.URL.Query().Get("streamer")
+	if streamerName == "" {
+		http.Error(w, `{"error":"streamer name required"}`, 400)
+		return
+	}
+
+	var sc *config.StreamerConfig
+	for i := range s.cfg.Streamers {
+		if s.cfg.Streamers[i].Name == streamerName {
+			sc = &s.cfg.Streamers[i]
+			break
+		}
+	}
+	if sc == nil {
+		http.Error(w, `{"error":"streamer not found"}`, 404)
+		return
+	}
+
+	// Check permission: admin or assigned room
+	if !u.IsAdmin {
+		rooms, _ := s.store.GetUserRooms(u.ID)
+		allowed := false
+		for _, rid := range rooms {
+			if rid == sc.RoomID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			http.Error(w, `{"error":"forbidden"}`, 403)
+			return
+		}
+	}
+
+	// Filter available accounts for non-admin
+	var allowedAccounts map[string]bool
+	if !u.IsAdmin {
+		accts, _ := s.store.GetUserAccounts(u.ID)
+		allowedAccounts = make(map[string]bool)
+		for _, a := range accts {
+			allowedAccounts[a] = true
+		}
+	}
+
+	switch r.Method {
+	case "GET":
+		json.NewEncoder(w).Encode(sc.Outputs)
+
+	case "POST", "PUT":
+		var req config.OutputConfig
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid json"}`, 400)
+			return
+		}
+		if req.Name == "" {
+			http.Error(w, `{"error":"name required"}`, 400)
+			return
+		}
+		if req.Platform == "" {
+			req.Platform = "bilibili"
+		}
+		// Non-admin can only use their assigned accounts
+		if allowedAccounts != nil && req.Account != "" && !allowedAccounts[req.Account] {
+			http.Error(w, `{"error":"account not assigned to you"}`, 403)
+			return
 		}
 		found := false
 		for i, o := range sc.Outputs {
