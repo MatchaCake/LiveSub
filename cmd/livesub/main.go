@@ -257,6 +257,7 @@ func run(cfgPath string) error {
 
 					// Create controller for this streamer
 					ctrl := controller.New(pool, sc.Outputs, tlog, sc.RoomID)
+					webServer.SetController(sc.Name, ctrl) // sync pause state BEFORE start
 					ctrl.Start(streamCtx)
 
 					mu.Lock()
@@ -264,7 +265,6 @@ func run(cfgPath string) error {
 						as.ctrl = ctrl
 					}
 					mu.Unlock()
-					webServer.SetController(sc.Name, ctrl)
 
 					// Create and run agent
 					a := agent.New(sc, translator, ctrl)
