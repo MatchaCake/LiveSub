@@ -20,3 +20,4 @@ configs/users.db
 configs/users.db-shm
 configs/users.db-wal
 configs/transcripts/
+logs/
