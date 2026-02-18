@@ -26,17 +26,11 @@ func main() {
 
 	if len(os.Args) < 2 {
 		fmt.Println("Usage:")
-		fmt.Println("  livesub sources          List PipeWire audio sources")
 		fmt.Println("  livesub run [config]     Start monitoring & translating")
 		os.Exit(1)
 	}
 
 	switch os.Args[1] {
-	case "sources":
-		if err := audio.ListSources(); err != nil {
-			slog.Error("list sources failed", "err", err)
-			os.Exit(1)
-		}
 	case "run":
 		cfgPath := "config.yaml"
 		if len(os.Args) > 2 {
@@ -53,8 +47,7 @@ func main() {
 }
 
 type activeStream struct {
-	cancel  context.CancelFunc
-	browser *audio.BrowserSession
+	cancel context.CancelFunc
 }
 
 func run(cfgPath string) error {
@@ -121,36 +114,22 @@ func run(cfgPath string) error {
 					"title", ev.Title,
 				)
 
-				// Open browser → find audio node → start translating
+				active[ev.RoomID] = &activeStream{cancel: streamCancel}
+				mu.Unlock()
+
 				go func(sc config.StreamConfig, streamCtx context.Context, streamCancel context.CancelFunc) {
-					browser, err := audio.OpenBrowser(streamCtx, sc.RoomID)
-					if err != nil {
-						slog.Error("failed to open browser", "room", sc.RoomID, "err", err)
-						streamCancel()
-						return
-					}
-
-					mu.Lock()
-					active[sc.RoomID] = &activeStream{cancel: streamCancel, browser: browser}
-					mu.Unlock()
-
-					if err := runStream(streamCtx, cfg, sc, browser.NodeID(), translator); err != nil {
+					if err := runStream(streamCtx, cfg, sc, translator); err != nil {
 						slog.Error("stream ended", "name", sc.Name, "err", err)
 					}
-
-					browser.Close()
+					streamCancel()
 					mu.Lock()
 					delete(active, sc.RoomID)
 					mu.Unlock()
 				}(sc, streamCtx, streamCancel)
-
-				mu.Unlock()
 			} else {
-				// Room went offline → stop translation + close browser
 				if as, running := active[ev.RoomID]; running {
 					slog.Info("📴 room went offline, stopping", "room", ev.RoomID)
 					as.cancel()
-					as.browser.Close()
 					delete(active, ev.RoomID)
 				}
 				mu.Unlock()
@@ -162,30 +141,30 @@ func run(cfgPath string) error {
 	return mon.Watch(ctx, roomIDs, events)
 }
 
-func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, nodeID int, translator *translate.GeminiTranslator) error {
-	slog.Info("pipeline starting",
-		"name", sc.Name,
-		"room", sc.RoomID,
-		"node", nodeID,
-		"lang", sc.SourceLang,
-	)
+func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, translator *translate.GeminiTranslator) error {
+	// 1. Get live stream URL
+	streamURL, err := audio.GetBilibiliStreamURL(sc.RoomID)
+	if err != nil {
+		return fmt.Errorf("get stream url: %w", err)
+	}
+	slog.Info("got stream URL", "name", sc.Name, "room", sc.RoomID)
 
-	// 1. Audio capture from browser's PipeWire node
-	capturer := audio.NewCapturer(nodeID)
-	audioReader, err := capturer.Start(ctx)
+	// 2. Audio capture via ffmpeg
+	capturer := audio.NewCapturer()
+	audioReader, err := capturer.Start(ctx, streamURL)
 	if err != nil {
 		return fmt.Errorf("start audio: %w", err)
 	}
 	defer audioReader.Close()
 
-	// 2. STT
+	// 3. STT
 	sttClient, err := stt.NewGoogleSTT(ctx, sc.SourceLang, sc.AltLangs)
 	if err != nil {
 		return fmt.Errorf("init stt: %w", err)
 	}
 	defer sttClient.Close()
 
-	// 3. Danmaku sender
+	// 4. Danmaku sender
 	sender := danmaku.NewBilibiliSender(
 		sc.RoomID,
 		cfg.Bilibili.SESSDATA,
@@ -234,7 +213,7 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 			continue
 		}
 
-		// If already in target language, send directly (no translation needed)
+		// If already in target language, send directly
 		if isTargetLang(result.Language, targetLang) {
 			slog.Info("📝 direct", "name", sc.Name, "text", result.Text, "lang", result.Language)
 			if err := sender.Send(result.Text); err != nil {
@@ -261,8 +240,6 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	return nil
 }
 
-// isTargetLang checks if the detected language matches the target language.
-// e.g. "zh-cn" matches "zh-CN", "cmn-hans-cn" matches "zh-CN"
 func isTargetLang(detected, target string) bool {
 	if detected == "" || target == "" {
 		return false
@@ -270,11 +247,9 @@ func isTargetLang(detected, target string) bool {
 	d := strings.ToLower(detected)
 	t := strings.ToLower(target)
 
-	// Direct match
 	if strings.HasPrefix(d, strings.Split(t, "-")[0]) {
 		return true
 	}
-	// Google STT returns "cmn-hans-cn" for Mandarin Chinese
 	if strings.Contains(t, "zh") && (strings.Contains(d, "cmn") || strings.Contains(d, "zh")) {
 		return true
 	}
