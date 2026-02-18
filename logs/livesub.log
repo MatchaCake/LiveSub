@@ -1155,3 +1155,53 @@ time=2026-02-18T11:05:14.183+08:00 level=INFO msg="STT final" text=" これち�
 time=2026-02-18T11:05:14.183+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" これちょっと聞いてみる。ちーちゃん 配信" score=0.68 conf=0.5223373174667358 len=21 hard=true soft=false longText=false
 time=2026-02-18T11:05:17.576+08:00 level=INFO msg="STT final" text=" ちゃん 配信 お疲れ様。" lang=ja-jp confidence=0.6869695782661438
 time=2026-02-18T11:05:17.576+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" ちゃん 配信 お疲れ様。" score=0.68 conf=0.6869695782661438 len=13 hard=true soft=false longText=false
+time=2026-02-18T11:05:28.156+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T11:05:28.156+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T11:05:28.185+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041]
+time=2026-02-18T11:05:28.185+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T11:05:28.290+08:00 level=INFO msg="room went LIVE" room=14988041 title=正在调试
+time=2026-02-18T11:05:28.290+08:00 level=INFO msg="🎙️ room went live, starting pipeline" name="Test Stream" room=14988041 title=正在调试
+time=2026-02-18T11:05:28.368+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
+time=2026-02-18T11:05:28.368+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/609419/live_295893148_2747772.flv
+time=2026-02-18T11:05:45.932+08:00 level=INFO msg="STT final" text=この腐敗した世界に落とされた。こんなもののために生まれたんじゃない？ lang=ja-jp confidence=0.8020371794700623
+time=2026-02-18T11:05:45.932+08:00 level=INFO msg="📊 dispatch" name="Test Stream" musicScore=0.18 conf=0.8020371794700623 len=34 text=この腐敗した世界に落とされた。こんなもののために生まれたんじゃない？
+time=2026-02-18T11:05:47.049+08:00 level=INFO msg="📝 translated" worker=1 name="Test Stream" src=この腐敗した世界に落とされた。こんなもののために生まれたんじゃない？ dst=我生来不是为了这堕落的世界。
+time=2026-02-18T11:05:47.049+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=0 text=我生来不是为了这堕落的世界。
+time=2026-02-18T11:05:47.326+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【我生来不是为了这堕落的世界。】
+time=2026-02-18T11:05:53.517+08:00 level=INFO msg="STT final" text=" もうわかんない。ごめんごめん。やっぱりもう無理 わかんない。もうわかんない。" lang=ja-jp confidence=0.3355809450149536
+time=2026-02-18T11:05:53.517+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" もうわかんない。ごめんごめん。やっぱりもう無理 わかんない。もうわかんない。" score=0.83 conf=0.3355809450149536 len=39 hard=true soft=false longText=false
+time=2026-02-18T11:06:07.146+08:00 level=INFO msg="STT final" text="ちいちゃんのリクエストなら 歌いたかったけど、結構だけは結構だけは 何回聞いても覚えられない。" lang=ja-jp confidence=0.6217688322067261
+time=2026-02-18T11:06:07.146+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text="ちいちゃんのリクエストなら 歌いたかったけど、結構だけは結構だけは 何回聞いても覚えられない。" score=0.97 conf=0.6217688322067261 len=47 hard=true soft=false longText=false
+time=2026-02-18T11:06:13.049+08:00 level=INFO msg="STT final" text="いや 練習しようかな。結構 練習する。結構。" lang=ja-jp confidence=0.26839324831962585
+time=2026-02-18T11:06:13.049+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text="いや 練習しようかな。結構 練習する。結構。" score=0.99 conf=0.26839324831962585 len=22 hard=true soft=false longText=false
+time=2026-02-18T11:06:16.969+08:00 level=INFO msg="STT final" text=" 練習？" lang=ja-jp confidence=0.5194648504257202
+time=2026-02-18T11:06:16.969+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" 練習？" score=0.87 conf=0.5194648504257202 len=4 hard=true soft=false longText=false
+time=2026-02-18T11:06:32.266+08:00 level=INFO msg="STT final" text=" アナギースパチャ もしてくれてたか？そっか。ありがとう。次は私が ちーちゃんとこに投げに行くか？" lang=ja-jp confidence=0.24393098056316376
+time=2026-02-18T11:06:32.266+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" アナギースパチャ もしてくれてたか？そっか。ありがとう。次は私が ちーちゃんとこに投げに行くか？" score=0.71 conf=0.24393098056316376 len=49 hard=true soft=false longText=false
+time=2026-02-18T11:06:40.202+08:00 level=INFO msg="STT final" text="他の他の ないですか？なんか？" lang=ja-jp confidence=0.9067693948745728
+time=2026-02-18T11:06:40.203+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text="他の他の ないですか？なんか？" score=0.93 conf=0.9067693948745728 len=15 hard=true soft=false longText=false
+time=2026-02-18T11:06:55.177+08:00 level=INFO msg="STT final" text=" ゲッコー 練習するね。覚えるね。頑張ります。だいたいaimer ヨルシカ" lang=ja-jp confidence=0.5799254775047302
+time=2026-02-18T11:06:55.177+08:00 level=INFO msg="📊 dispatch" name="Test Stream" musicScore=0.13 conf=0.5799254775047302 len=37 text=" ゲッコー 練習するね。覚えるね。頑張ります。だいたいaimer ヨルシカ"
+time=2026-02-18T11:06:56.674+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src=" ゲッコー 練習するね。覚えるね。頑張ります。だいたいaimer ヨルシカ" dst=好，我练练。记一下。加油。大概像aimer和ヨルシカ。
+time=2026-02-18T11:06:56.674+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=1 text=好，我练练。记一下。加油。大概像aimer和ヨルシカ。
+time=2026-02-18T11:06:56.996+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【好，我练练。记一下。加油。大概像aimer和ヨルシカ。】
+time=2026-02-18T11:07:01.077+08:00 level=INFO msg="STT final" text=" ぼっちだ ロック 宇多田ヒカル" lang=ja-jp confidence=0.38906559348106384
+time=2026-02-18T11:07:01.077+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" ぼっちだ ロック 宇多田ヒカル" score=0.78 conf=0.38906559348106384 len=16 hard=true soft=false longText=false
+time=2026-02-18T11:07:09.446+08:00 level=INFO msg="STT final" text=" の変をうろちょろしています。あとvaundyとか。" lang=ja-jp confidence=0.7313422560691833
+time=2026-02-18T11:07:09.446+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" の変をうろちょろしています。あとvaundyとか。" score=0.94 conf=0.7313422560691833 len=26 hard=true soft=false longText=false
+time=2026-02-18T11:07:13.128+08:00 level=INFO msg="STT final" text=" とかですね。" lang=ja-jp confidence=0.5634117126464844
+time=2026-02-18T11:07:13.128+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" とかですね。" score=0.83 conf=0.5634117126464844 len=7 hard=true soft=false longText=false
+time=2026-02-18T11:07:16.980+08:00 level=INFO msg="STT final" text=" 炎。" lang=ja-jp confidence=0.22504426538944244
+time=2026-02-18T11:07:16.981+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" 炎。" score=0.85 conf=0.22504426538944244 len=3 hard=true soft=false longText=false
+time=2026-02-18T11:07:21.247+08:00 level=INFO msg="STT final" text=" 片思い 今日 歌ってないな。片思いは？" lang=ja-jp confidence=0.7369220852851868
+time=2026-02-18T11:07:21.247+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" 片思い 今日 歌ってないな。片思いは？" score=0.91 conf=0.7369220852851868 len=20 hard=true soft=false longText=false
+time=2026-02-18T11:07:25.367+08:00 level=INFO msg="STT final" text=" じゃあ 片思いにするか？" lang=ja-jp confidence=0.5494792461395264
+time=2026-02-18T11:07:25.367+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" じゃあ 片思いにするか？" score=0.89 conf=0.5494792461395264 len=13 hard=true soft=false longText=false
+time=2026-02-18T11:07:30.198+08:00 level=INFO msg="STT final" text=" 簡単音も！" lang=ja-jp confidence=0.33348551392555237
+time=2026-02-18T11:07:30.198+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" 簡単音も！" score=0.81 conf=0.33348551392555237 len=6 hard=true soft=false longText=false
+time=2026-02-18T11:07:38.173+08:00 level=INFO msg="STT final" text=" 肩重い 全然違う。片思いてる人おるけど。" lang=ja-jp confidence=0.555554986000061
+time=2026-02-18T11:07:38.173+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" 肩重い 全然違う。片思いてる人おるけど。" score=0.58 conf=0.555554986000061 len=21 hard=true soft=false longText=false
+time=2026-02-18T11:07:41.957+08:00 level=INFO msg="STT final" text=" ほな、片思い 行こっか？" lang=ja-jp confidence=0.6543476581573486
+time=2026-02-18T11:07:41.957+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" ほな、片思い 行こっか？" score=0.45 conf=0.6543476581573486 len=13 hard=true soft=false longText=false
+time=2026-02-18T11:07:46.039+08:00 level=INFO msg="STT final" text=" やっぱ ちょちょちょちょ 待ちんかい 待ってんかい？" lang=ja-jp confidence=0.23421040177345276
+time=2026-02-18T11:07:46.039+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" やっぱ ちょちょちょちょ 待ちんかい 待ってんかい？" score=0.78 conf=0.23421040177345276 len=27 hard=true soft=false longText=false
