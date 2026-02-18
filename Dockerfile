@@ -24,4 +24,5 @@ WORKDIR /app
 VOLUME /app/configs
 EXPOSE 8899
 
-ENTRYPOINT ["livesub", "run", "configs/config.yaml"]
+ENTRYPOINT ["livesub", "run"]
+CMD ["configs/config.yaml"]
