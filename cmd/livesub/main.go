@@ -109,13 +109,6 @@ func run(cfgPath string) error {
 	webServer := web.NewServer(rc, webPort, cfg.Auth.Username, cfg.Auth.Password)
 	webServer.Start()
 
-	// Hot reload config
-	hotCfg.OnReload(func(newCfg *config.Config) {
-		webServer.UpdateAuth(newCfg.Auth.Username, newCfg.Auth.Password)
-		// Update danmaku settings etc. as needed
-	})
-	hotCfg.Watch()
-
 	// Monitor live status
 	mon := monitor.NewBilibiliMonitor(30 * time.Second)
 	events := make(chan monitor.RoomEvent, 10)
@@ -123,6 +116,60 @@ func run(cfgPath string) error {
 	// Track active streams
 	var mu sync.Mutex
 	active := make(map[int64]*activeStream)
+
+	// Hot reload config
+	hotCfg.OnReload(func(newCfg *config.Config) {
+		webServer.UpdateAuth(newCfg.Auth.Username, newCfg.Auth.Password)
+
+		// Build new room set
+		newRoomSet := make(map[int64]config.StreamConfig)
+		for _, sc := range newCfg.Streams {
+			newRoomSet[sc.RoomID] = sc
+		}
+
+		// Find removed rooms → stop active streams + unregister
+		mu.Lock()
+		var removedIDs []int64
+		for id := range streamMap {
+			if _, exists := newRoomSet[id]; !exists {
+				removedIDs = append(removedIDs, id)
+				if as, running := active[id]; running {
+					slog.Info("🔄 stopping removed stream", "room", id)
+					as.cancel()
+					delete(active, id)
+				}
+				rc.Unregister(id)
+			}
+		}
+
+		// Find added rooms → register
+		var addedIDs []int64
+		for id, sc := range newRoomSet {
+			if _, exists := streamMap[id]; !exists {
+				addedIDs = append(addedIDs, id)
+				rc.Register(id, sc.Name)
+			}
+		}
+
+		// Update streamMap
+		streamMap = newRoomSet
+		mu.Unlock()
+
+		// Update monitor
+		if len(removedIDs) > 0 {
+			mon.RemoveRooms(removedIDs, events)
+		}
+		if len(addedIDs) > 0 {
+			mon.AddRooms(addedIDs)
+		}
+
+		slog.Info("🔄 streams reloaded",
+			"total", len(newCfg.Streams),
+			"added", len(addedIDs),
+			"removed", len(removedIDs),
+		)
+	})
+	hotCfg.Watch()
 
 	// Event handler
 	go func() {
@@ -149,7 +196,7 @@ func run(cfgPath string) error {
 				mu.Unlock()
 
 				go func(sc config.StreamConfig, streamCtx context.Context, streamCancel context.CancelFunc) {
-					if err := runStream(streamCtx, cfg, sc, translator, pool, rc); err != nil {
+					if err := runStream(streamCtx, hotCfg.Get(), sc, translator, pool, rc); err != nil {
 						slog.Error("stream ended", "name", sc.Name, "err", err)
 					}
 					streamCancel()

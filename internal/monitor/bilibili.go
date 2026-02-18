@@ -50,13 +50,34 @@ type RoomEvent struct {
 	Title   string
 }
 
+// AddRooms registers new room IDs for monitoring (skips already tracked).
+func (m *BilibiliMonitor) AddRooms(roomIDs []int64) {
+	for _, id := range roomIDs {
+		if _, exists := m.rooms[id]; !exists {
+			m.rooms[id] = &RoomState{RoomID: id}
+			slog.Info("monitor: added room", "room", id)
+		}
+	}
+}
+
+// RemoveRooms stops monitoring the given rooms and emits offline events for any that were live.
+func (m *BilibiliMonitor) RemoveRooms(roomIDs []int64, events chan<- RoomEvent) {
+	for _, id := range roomIDs {
+		if state, exists := m.rooms[id]; exists {
+			if state.WasLive {
+				events <- RoomEvent{RoomID: id, Live: false}
+			}
+			delete(m.rooms, id)
+			slog.Info("monitor: removed room", "room", id)
+		}
+	}
+}
+
 // Watch monitors the given rooms and sends events on transitions.
 // Blocks until context is cancelled.
 func (m *BilibiliMonitor) Watch(ctx context.Context, roomIDs []int64, events chan<- RoomEvent) error {
 	// Init room states
-	for _, id := range roomIDs {
-		m.rooms[id] = &RoomState{RoomID: id}
-	}
+	m.AddRooms(roomIDs)
 
 	slog.Info("bilibili monitor started", "rooms", len(roomIDs), "interval", m.interval)
 
