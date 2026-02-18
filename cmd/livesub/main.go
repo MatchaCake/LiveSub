@@ -157,13 +157,16 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}
 	slog.Info("got stream URL", "name", sc.Name, "room", sc.RoomID)
 
-	// 2. Audio capture via ffmpeg
+	// 2. Audio capture via ffmpeg + music detection
 	capturer := audio.NewCapturer()
-	audioReader, err := capturer.Start(ctx, streamURL)
+	rawReader, err := capturer.Start(ctx, streamURL)
 	if err != nil {
 		return fmt.Errorf("start audio: %w", err)
 	}
-	defer audioReader.Close()
+	defer rawReader.Close()
+
+	musicDetector := audio.NewMusicDetector(16000)
+	audioReader := audio.NewAnalyzingReader(rawReader, musicDetector)
 
 	// 3. STT
 	sttClient, err := stt.NewGoogleSTT(ctx, sc.SourceLang, sc.AltLangs)
@@ -247,12 +250,15 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}()
 
 	// Dispatch STT results to shared pool
-	// Singing filter: track last 2 results' text length
-	// Singing = STT produces long continuous text (lyrics); speech = short sentences
-	// Two consecutive long texts (>50 chars) → singing mode; two consecutive short → speech mode
+	// 3-layer singing detection:
+	// 1. Text length: consecutive long texts (>50) → singing mode
+	// 2. Hard length cap: single text >80 chars → always skip
+	// 3. FFT spectral: high music score (>0.80) → skip (only when very confident)
 	const (
-		longTextThreshold = 50
+		longTextThreshold  = 50
 		shortTextThreshold = 30
+		hardLengthCap      = 80
+		highMusicScore     = 0.80
 	)
 	var prevLen int
 	singing := false
@@ -264,8 +270,9 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 		}
 
 		textLen := len([]rune(result.Text))
+		musicScore := musicDetector.Score()
 
-		// State transitions based on last 2 results
+		// Layer 1: consecutive long text → singing mode
 		if textLen > longTextThreshold && prevLen > longTextThreshold {
 			if !singing {
 				singing = true
@@ -276,17 +283,33 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 			singing = false
 			slog.Info("🎤 singing mode OFF", "name", sc.Name, "curLen", textLen, "prevLen", prevLen)
 		}
-
 		prevLen = textLen
 
-		if singing {
-			slog.Info("🎵 skipping (singing)", "name", sc.Name,
-				"text", result.Text, "len", textLen, "conf", result.Confidence)
+		// Layer 2: hard length cap
+		lengthSkip := textLen > hardLengthCap
+
+		// Layer 3: FFT high confidence music detection
+		fftSkip := musicScore > highMusicScore && textLen > 30
+
+		skip := singing || lengthSkip || fftSkip
+		if skip {
+			reason := "singing"
+			if lengthSkip {
+				reason = "long_text"
+			} else if fftSkip {
+				reason = "fft"
+			}
+			slog.Info("🎵 skipping", "name", sc.Name, "reason", reason,
+				"text", result.Text, "len", textLen,
+				"musicScore", fmt.Sprintf("%.2f", musicScore),
+				"conf", result.Confidence)
 			continue
 		}
 
 		slog.Info("📊 dispatch", "name", sc.Name,
-			"conf", result.Confidence, "len", textLen, "text", result.Text)
+			"conf", result.Confidence, "len", textLen,
+			"musicScore", fmt.Sprintf("%.2f", musicScore),
+			"text", result.Text)
 
 		direct := isTargetLang(result.Language, targetLang)
 		if direct {
