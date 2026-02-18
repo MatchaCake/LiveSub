@@ -37,6 +37,12 @@ func (rc *RoomControl) Register(roomID int64, name string) {
 	rc.rooms[roomID] = &RoomState{RoomID: roomID, Name: name}
 }
 
+func (rc *RoomControl) Unregister(roomID int64) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	delete(rc.rooms, roomID)
+}
+
 func (rc *RoomControl) SetLive(roomID int64, live bool) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
@@ -270,6 +276,7 @@ const loginHTML = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LiveSub 登录</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
@@ -324,6 +331,7 @@ const indexHTML = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LiveSub 控制面板</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; padding: 20px; }
