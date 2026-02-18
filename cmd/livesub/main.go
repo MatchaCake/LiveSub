@@ -247,9 +247,41 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}()
 
 	// Dispatch STT results to shared pool
+	// Singing detection: consecutive low-confidence results → pause translation
+	const (
+		lowConfThreshold = float32(0.35)
+		pauseAfter       = 3 // consecutive low-conf results to trigger pause
+		resumeAfter      = 2 // consecutive normal results to resume
+	)
+	var lowConfCount, highConfCount int
+	singing := false
+
 	seq := 0
 	for result := range resultsCh {
 		if !result.IsFinal {
+			continue
+		}
+
+		// Track confidence streaks
+		if result.Confidence > 0 && result.Confidence < lowConfThreshold {
+			lowConfCount++
+			highConfCount = 0
+		} else {
+			highConfCount++
+			lowConfCount = 0
+		}
+
+		if !singing && lowConfCount >= pauseAfter {
+			singing = true
+			slog.Info("🎵 singing detected, pausing translation", "name", sc.Name, "lowConfStreak", lowConfCount)
+		}
+		if singing && highConfCount >= resumeAfter {
+			singing = false
+			slog.Info("🎤 speech resumed, resuming translation", "name", sc.Name, "highConfStreak", highConfCount)
+		}
+
+		if singing {
+			slog.Debug("🎵 skipping (singing)", "name", sc.Name, "text", result.Text, "conf", result.Confidence)
 			continue
 		}
 

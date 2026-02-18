@@ -32,9 +32,10 @@ func NewGoogleSTT(ctx context.Context, language string, altLangs []string) (*Goo
 
 // StreamResult represents a transcription result.
 type StreamResult struct {
-	Text     string
-	IsFinal  bool
-	Language string // detected language code (e.g. "ja-jp", "en-us", "zh-cn")
+	Text       string
+	IsFinal    bool
+	Language   string  // detected language code (e.g. "ja-jp", "en-us", "zh-cn")
+	Confidence float32 // 0.0-1.0, from STT engine
 }
 
 // Stream starts a streaming recognition session.
@@ -103,9 +104,10 @@ func (s *GoogleSTT) Stream(ctx context.Context, audioReader io.Reader, results c
 			if len(result.Alternatives) > 0 {
 				alt := result.Alternatives[0]
 				sr := StreamResult{
-					Text:     alt.Transcript,
-					IsFinal:  result.IsFinal,
-					Language: result.GetLanguageCode(),
+					Text:       alt.Transcript,
+					IsFinal:    result.IsFinal,
+					Language:   result.GetLanguageCode(),
+					Confidence: alt.Confidence,
 				}
 
 				if sr.IsFinal {
