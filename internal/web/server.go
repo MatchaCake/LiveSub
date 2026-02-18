@@ -903,6 +903,14 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 			http.Error(w, `{"error":"save failed"}`, 500)
 			return
 		}
+		// New outputs default to paused
+		if !found {
+			rt := s.getOrCreateRuntime(streamerName)
+			rt.paused[req.Name] = true
+			if rt.ctrl != nil {
+				rt.ctrl.SetPaused(req.Name, true)
+			}
+		}
 		action := "add_output"
 		if found {
 			action = "update_output"
@@ -1061,6 +1069,13 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 		if err := config.Save(s.cfgPath, s.cfg); err != nil {
 			http.Error(w, `{"error":"save failed"}`, 500)
 			return
+		}
+		if !found {
+			rt := s.getOrCreateRuntime(streamerName)
+			rt.paused[req.Name] = true
+			if rt.ctrl != nil {
+				rt.ctrl.SetPaused(req.Name, true)
+			}
 		}
 		action := "add_output"
 		if found {
