@@ -421,3 +421,107 @@ time=2026-02-18T10:15:28.430+08:00 level=INFO msg="📝 translated" name="Test S
 time=2026-02-18T10:15:32.606+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【这边也忘了写“ブリキのダンス”了。】
 time=2026-02-18T10:15:33.239+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" はい、ありがとうございました。" dst=好的，谢谢。 lang=ja-jp
 time=2026-02-18T10:15:33.554+08:00 level=INFO msg="STT final" text=滑舌は死んでるっぽい。 lang=ja-jp confidence=0.7693426609039307
+time=2026-02-18T10:15:37.874+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【好的，谢谢。】
+time=2026-02-18T10:15:38.597+08:00 level=INFO msg="📝 translated" name="Test Stream" src=滑舌は死んでるっぽい。 dst=口齿不清了。 lang=ja-jp
+time=2026-02-18T10:15:43.133+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【口齿不清了。】
+time=2026-02-18T10:15:43.133+08:00 level=INFO msg="STT final" text=" でも、今のでだいぶ 緊張はほぐれたかな？あの新人なもんで緊張してるんですよ。" lang=ja-jp confidence=0.6710723042488098
+time=2026-02-18T10:15:43.912+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" でも、今のでだいぶ 緊張はほぐれたかな？あの新人なもんで緊張してるんですよ。" dst=不过，刚刚那样应该放松不少了吧？新人嘛，比较紧张。 lang=ja-jp
+time=2026-02-18T10:15:48.365+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【不过，刚刚那样应该放松不少了吧？新人嘛，比较紧张。】
+time=2026-02-18T10:15:53.116+08:00 level=INFO msg="STT final" text=" そう。提督の精。" lang=ja-jp confidence=0.38660675287246704
+time=2026-02-18T10:15:53.873+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" そう。提督の精。" dst=没错。提督的精力。 lang=ja-jp
+time=2026-02-18T10:15:54.135+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【没错。提督的精力。】
+time=2026-02-18T10:15:58.843+08:00 level=INFO msg="STT final" text="団長は悪くない提督の精 そうなんです。" lang=ja-jp confidence=0.8514788150787354
+time=2026-02-18T10:15:59.591+08:00 level=INFO msg="📝 translated" name="Test Stream" src="団長は悪くない提督の精 そうなんです。" dst=团长没问题，是舰长的精……是这样的。 lang=ja-jp
+time=2026-02-18T10:15:59.793+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【团长没问题，是舰长的精……是这样的。】
+time=2026-02-18T10:16:05.258+08:00 level=INFO msg="STT final" text=" にゃーにゃーにゃ で乗り切っ！" lang=ja-jp confidence=0.37054339051246643
+time=2026-02-18T10:16:06.406+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" にゃーにゃーにゃ で乗り切っ！" dst=喵喵喵，顶过去！ lang=ja-jp
+time=2026-02-18T10:16:06.581+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【喵喵喵，顶过去！】
+time=2026-02-18T10:16:28.542+08:00 level=INFO msg="STT final" text=" たものに白雪の恋煩いは冬の曲だよね。じゃあ はい、私のせいですいません。" lang=ja-jp confidence=0.2897438108921051
+time=2026-02-18T10:16:29.385+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" たものに白雪の恋煩いは冬の曲だよね。じゃあ はい、私のせいですいません。" dst=《白雪》是冬天的歌，没错吧。是，怪我怪我。 lang=ja-jp
+time=2026-02-18T10:16:29.575+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【《白雪》是冬天的歌，没错吧。是，怪我怪我。】
+time=2026-02-18T10:16:34.127+08:00 level=INFO msg="STT final" text=" そう、あなたのsiriだ。" lang=ja-jp confidence=0.4116664528846741
+time=2026-02-18T10:16:34.869+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" そう、あなたのsiriだ。" dst=是的，你的Siri。 lang=ja-jp
+time=2026-02-18T10:16:35.180+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【是的，你的Siri。】
+time=2026-02-18T10:16:38.040+08:00 level=INFO msg="STT final" text=" 新人にゃんにゃん 団長。" lang=ja-jp confidence=0.26421040296554565
+time=2026-02-18T10:16:38.753+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 新人にゃんにゃん 団長。" dst=新人喵喵团长。 lang=ja-jp
+time=2026-02-18T10:16:40.412+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【新人喵喵团长。】
+time=2026-02-18T10:16:53.374+08:00 level=INFO msg="STT final" text=" そうです。団長は今日から 何が班長です。何でもかんでも にゃんにゃんにゃーで片付けます。にゃにゃーにゃ で なんとかやっていきます。にゃーにゃ で なんとかやっていきます。" lang=ja-jp confidence=0.42330265045166016
+time=2026-02-18T10:16:54.379+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" そうです。団長は今日から 何が班長です。何でもかんでも にゃんにゃんにゃーで片付けます。にゃにゃーにゃ で なんとかやっていきます。にゃーにゃ で なんとかやっていきます。" dst=是的，团长今天开始，什么都喵喵叫着解决。就靠喵喵喵来混了。就靠喵喵喵来混了。 lang=ja-jp
+time=2026-02-18T10:16:54.627+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【是的，团长今天开始，什么都喵喵叫着解决。就靠喵喵喵来混了】
+time=2026-02-18T10:16:56.019+08:00 level=INFO msg="STT final" text="覚えづらい を歌います。" lang=ja-jp confidence=0.4861624836921692
+time=2026-02-18T10:16:59.891+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【。就靠喵喵喵来混了。】
+time=2026-02-18T10:17:00.722+08:00 level=INFO msg="📝 translated" name="Test Stream" src="覚えづらい を歌います。" dst=我来唱首难记的歌。 lang=ja-jp
+time=2026-02-18T10:17:05.093+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【我来唱首难记的歌。】
+time=2026-02-18T10:17:05.613+08:00 level=INFO msg="STT final" text="いいか良いか、これは辛い 答えます。aimer のamenの恋煩い を歌います。" lang=ja-jp confidence=0.34919124841690063
+time=2026-02-18T10:17:06.542+08:00 level=INFO msg="📝 translated" name="Test Stream" src="いいか良いか、これは辛い 答えます。aimer のamenの恋煩い を歌います。" dst=行不行，这太难了。唱一首Aimer的《amen》的相思曲。 lang=ja-jp
+time=2026-02-18T10:17:10.293+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【行不行，这太难了。唱一首Aimer的《amen》的相思曲】
+time=2026-02-18T10:17:13.924+08:00 level=INFO msg="STT final" text=冬の曲をね。ちょっと集めていこう。 lang=ja-jp confidence=0.9170448184013367
+time=2026-02-18T10:17:15.546+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【。】
+time=2026-02-18T10:17:16.368+08:00 level=INFO msg="📝 translated" name="Test Stream" src=冬の曲をね。ちょっと集めていこう。 dst=来点冬天的歌吧。 lang=ja-jp
+time=2026-02-18T10:17:17.969+08:00 level=INFO msg="STT final" text=" かで調子が良くなってきたからって時に。" lang=ja-jp confidence=0.7851823568344116
+time=2026-02-18T10:17:20.755+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【来点冬天的歌吧。】
+time=2026-02-18T10:17:21.072+08:00 level=INFO msg="STT final" text=" 手紙を行こっか？" lang=ja-jp confidence=0.7974749803543091
+time=2026-02-18T10:17:21.430+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" かで調子が良くなってきたからって時に。" dst=感觉状态开始变好了。 lang=ja-jp
+time=2026-02-18T10:17:25.946+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【感觉状态开始变好了。】
+time=2026-02-18T10:17:27.351+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 手紙を行こっか？" dst=要写信吗？ lang=ja-jp
+time=2026-02-18T10:17:31.149+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【要写信吗？】
+time=2026-02-18T10:18:19.000+08:00 level=INFO msg="STT final" text=" 泣きましょう。笑って 強がりは気づいて、わがままを許して 気まぐれに付き合ってそばにいたくて寒いのを願って賢いんだ。当てとって繋いで見せて 寝袋 そう。わかってずっと続く愛しそう。分かってそんな心はいつだって。そっとため、息 ボスから伝えたい事っていつも伝えられなくて吐きように 笑ってごまかすんだよ。あり、ふれた会話 怪しくさを少しも忘れたくは。" lang=ja-jp confidence=0.38486769795417786
+time=2026-02-18T10:18:20.778+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 泣きましょう。笑って 強がりは気づいて、わがままを許して 気まぐれに付き合ってそばにいたくて寒いのを願って賢いんだ。当てとって繋いで見せて 寝袋 そう。わかってずっと続く愛しそう。分かってそんな心はいつだって。そっとため、息 ボスから伝えたい事っていつも伝えられなくて吐きように 笑ってごまかすんだよ。あり、ふれた会話 怪しくさを少しも忘れたくは。" dst=哭吧。逞强的笑容早已被看穿，任性也得到谅解，陪着我心血来潮，想待在你身边，甚至盼望寒冷。你好聪明。猜中我的心思，牵起我的手让我依靠。睡袋，没错。我明白，这份爱会持续下去。我明白，你一直都是这样的心意。轻轻地叹息，想从老板那里传达的事情总是无法传达，只能用笑容掩饰。普通的对话，想永远记住这份不可思议的感觉。 lang=ja-jp
+time=2026-02-18T10:18:20.976+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【哭吧。逞强的笑容早已被看穿，任性也得到谅解，陪着我心血来】
+time=2026-02-18T10:18:26.340+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【潮，想待在你身边，甚至盼望寒冷。你好聪明。猜中我的心思，】
+time=2026-02-18T10:18:29.265+08:00 level=INFO msg="STT final" text=溶けてしまわないよう。 lang=ja-jp confidence=0.7415406107902527
+time=2026-02-18T10:18:31.524+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【牵起我的手让我依靠。睡袋，没错。我明白，这份爱会持续下去】
+time=2026-02-18T10:18:36.717+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【。我明白，你一直都是这样的心意。轻轻地叹息，想从老板那里】
+time=2026-02-18T10:18:41.982+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【传达的事情总是无法传达，只能用笑容掩饰。普通的对话，想永】
+time=2026-02-18T10:18:46.720+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T10:18:46.720+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T10:18:46.739+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041]
+time=2026-02-18T10:18:46.739+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T10:18:46.851+08:00 level=INFO msg="room went LIVE" room=14988041 title=正在调试
+time=2026-02-18T10:18:46.851+08:00 level=INFO msg="🎙️ room went live, starting pipeline" name="Test Stream" room=14988041 title=正在调试
+time=2026-02-18T10:18:46.926+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
+time=2026-02-18T10:18:46.926+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/894359/live_295893148_2747772.flv
+time=2026-02-18T10:19:28.616+08:00 level=INFO msg="STT final" text="嫌いで曖昧を選んで会いたいを隠して笑顔を祈ってる。伝えたい事だって。いつも伝えたくなくて すれ違ってばかりで 見逃すんだよ。気がついた。大丈夫の灯りが少しも 優しくなんかないから、空にキラリ 瞬くように涙は 踊っていた。悲しくなっても寂しくなっても泣きたくなってもいいんだよ。" lang=ja-jp confidence=0.5831103324890137
+time=2026-02-18T10:19:30.361+08:00 level=INFO msg="📝 translated" name="Test Stream" src="嫌いで曖昧を選んで会いたいを隠して笑顔を祈ってる。伝えたい事だって。いつも伝えたくなくて すれ違ってばかりで 見逃すんだよ。気がついた。大丈夫の灯りが少しも 優しくなんかないから、空にキラリ 瞬くように涙は 踊っていた。悲しくなっても寂しくなっても泣きたくなってもいいんだよ。" dst=假装讨厌，选择暧昧，隐藏想见，祈祷微笑。明明想传达，却总是不想说，总是错过。我明白了。逞强的灯光，一点也不温柔，泪水如星光般，在空中闪烁。悲伤也好，寂寞也好，想哭也好，都没关系。 lang=ja-jp
+time=2026-02-18T10:19:30.595+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【假装讨厌，选择暧昧，隐藏想见，祈祷微笑。明明想传达，却总】
+time=2026-02-18T10:19:35.765+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【是不想说，总是错过。我明白了。逞强的灯光，一点也不温柔，】
+time=2026-02-18T10:19:40.966+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【泪水如星光般，在空中闪烁。悲伤也好，寂寞也好，想哭也好，】
+time=2026-02-18T10:19:46.164+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【都没关系。】
+time=2026-02-18T10:19:58.192+08:00 level=INFO msg="STT final" text=" 悲しい時こそ、寂しい時こそ大事なことがあるんだよ。悲しくなっても泣きたくなっても恋しくなってもいいんだよ。明日になっても大人になっても いつまでたっても。" lang=ja-jp confidence=0.7714506387710571
+time=2026-02-18T10:19:59.173+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 悲しい時こそ、寂しい時こそ大事なことがあるんだよ。悲しくなっても泣きたくなっても恋しくなってもいいんだよ。明日になっても大人になっても いつまでたっても。" dst=越是悲伤，越是寂寞的时候，越有重要的事。悲伤也好，想哭也好，想念也好，都没关系。明天也好，长大以后也好，无论何时都可以。 lang=ja-jp
+time=2026-02-18T10:19:59.353+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【越是悲伤，越是寂寞的时候，越有重要的事。悲伤也好，想哭也】
+time=2026-02-18T10:20:04.605+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【好，想念也好，都没关系。明天也好，长大以后也好，无论何时】
+time=2026-02-18T10:20:09.917+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【都可以。】
+time=2026-02-18T10:20:35.726+08:00 level=INFO msg="STT final" text="会長の灯りが少しも 優しくなんかないけど、空にきらり まだ咲いている。星降る夜に上がりをあり、ふれた会話 らしくさを少しも忘れたくはないよ。ゆらりふわり 知らない。昨日より。" lang=ja-jp confidence=0.533667266368866
+time=2026-02-18T10:20:36.820+08:00 level=INFO msg="📝 translated" name="Test Stream" src="会長の灯りが少しも 優しくなんかないけど、空にきらり まだ咲いている。星降る夜に上がりをあり、ふれた会話 らしくさを少しも忘れたくはないよ。ゆらりふわり 知らない。昨日より。" dst=会长的光芒，一点也不温柔，却依然闪耀在空中。星夜升起，不想忘记这平凡的对话，这真实的模样。摇曳飘忽，未知，胜过昨日。 lang=ja-jp
+time=2026-02-18T10:20:37.047+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【会长的光芒，一点也不温柔，却依然闪耀在空中。星夜升起，不】
+time=2026-02-18T10:20:42.297+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【想忘记这平凡的对话，这真实的模样。摇曳飘忽，未知，胜过昨】
+time=2026-02-18T10:20:47.595+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【日。】
+time=2026-02-18T10:21:00.281+08:00 level=INFO msg="STT final" text=" か消えた。どうしても楽しくなっても切なくなっても恋しくなってもいいんなら 寂しい。声こそ切ない 恋こそ大事なものになるんだ。" lang=ja-jp confidence=0.7129502892494202
+time=2026-02-18T10:21:01.216+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" か消えた。どうしても楽しくなっても切なくなっても恋しくなってもいいんなら 寂しい。声こそ切ない 恋こそ大事なものになるんだ。" dst=消失了。如果开心、难过、想念都可以的话，好寂寞。声音令人难过，恋爱是很重要的东西。 lang=ja-jp
+time=2026-02-18T10:21:01.434+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【消失了。如果开心、难过、想念都可以的话，好寂寞。声音令人】
+time=2026-02-18T10:21:06.603+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【难过，恋爱是很重要的东西。】
+time=2026-02-18T10:21:21.558+08:00 level=INFO msg="STT final" text=" よ悲しくなっても寂しくなっても泣きたくなってもいいんだよ。悲しい時こそ 寂しい時こそ大事なことかあるんだよ。" lang=ja-jp confidence=0.8751311302185059
+time=2026-02-18T10:21:22.409+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" よ悲しくなっても寂しくなっても泣きたくなってもいいんだよ。悲しい時こそ 寂しい時こそ大事なことかあるんだよ。" dst=难过、寂寞、想哭都没关系哦。难过寂寞的时候，才会有重要的东西。 lang=ja-jp
+time=2026-02-18T10:21:22.703+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【难过、寂寞、想哭都没关系哦。难过寂寞的时候，才会有重要的】
+time=2026-02-18T10:21:27.910+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【东西。】
+time=2026-02-18T10:21:28.038+08:00 level=INFO msg="STT final" text="団長 今でも 館長 ペロペロ 式がありますか？" lang=ja-jp confidence=0.8941999673843384
+time=2026-02-18T10:21:28.832+08:00 level=INFO msg="📝 translated" name="Test Stream" src="団長 今でも 館長 ペロペロ 式がありますか？" dst=团长，现在还有馆长舔舔舔的环节吗？ lang=ja-jp
+time=2026-02-18T10:21:33.064+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【团长，现在还有馆长舔舔舔的环节吗？】
+time=2026-02-18T10:21:33.989+08:00 level=INFO msg="STT final" text=っていうコメントがあったんやけど。 lang=ja-jp confidence=0.8663855195045471
+time=2026-02-18T10:21:34.669+08:00 level=INFO msg="📝 translated" name="Test Stream" src=っていうコメントがあったんやけど。 dst=有这样的评论。 lang=ja-jp
+time=2026-02-18T10:21:38.313+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【有这样的评论。】
+time=2026-02-18T10:21:40.506+08:00 level=INFO msg="STT final" text=" 提督さん来たし、久しぶりにやるか？" lang=ja-jp confidence=0.7867235541343689
+time=2026-02-18T10:21:41.229+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 提督さん来たし、久しぶりにやるか？" dst=提督来了，好久没玩了，来一把？ lang=ja-jp
+time=2026-02-18T10:21:43.504+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【提督来了，好久没玩了，来一把？】
+time=2026-02-18T10:22:02.217+08:00 level=INFO msg="STT final" text="提督の お兄ちゃん。" lang=ja-jp confidence=0.6898560523986816
+time=2026-02-18T10:22:03.059+08:00 level=INFO msg="📝 translated" name="Test Stream" src="提督の お兄ちゃん。" dst=提督哥哥。 lang=ja-jp
+time=2026-02-18T10:22:03.291+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【提督哥哥。】
+time=2026-02-18T10:22:06.185+08:00 level=INFO msg="STT final" text=" 提督の お兄ちゃん提督の お兄ちゃん。" lang=ja-jp confidence=0.8989480137825012
+time=2026-02-18T10:22:06.849+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 提督の お兄ちゃん提督の お兄ちゃん。" dst=提督哥哥，提督哥哥。 lang=ja-jp
+time=2026-02-18T10:22:08.480+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【提督哥哥，提督哥哥。】
+time=2026-02-18T10:22:09.681+08:00 level=INFO msg="STT final" text=" 提督になってくれて本当に。" lang=ja-jp confidence=0.9437171220779419
+time=2026-02-18T10:22:10.470+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 提督になってくれて本当に。" dst=谢谢你当上提督。 lang=ja-jp
+time=2026-02-18T10:22:12.490+08:00 level=INFO msg="STT final" text=" 嬉しいし。" lang=ja-jp confidence=0.22951912879943848
+time=2026-02-18T10:22:13.632+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【谢谢你当上提督。】
+time=2026-02-18T10:22:14.366+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 嬉しいし。" dst=好开心。 lang=ja-jp
