@@ -7,8 +7,9 @@ const loginHTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LiveSub 登录</title>
+<title>LiveSub</title>
 ` + faviconTag + `
+` + i18nScript + `
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
@@ -25,20 +26,24 @@ const loginHTML = `<!DOCTYPE html>
 </head>
 <body>
 <div class="login-box">
-  <h1>🎙️ LiveSub</h1>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+    <h1 style="margin:0;">🎙️ LiveSub</h1>
+    <script>document.write(langSwitcher())</script>
+  </div>
   <form id="loginForm">
     <div class="field">
-      <label>用户名</label>
+      <label data-i18n="username">用户名</label>
       <input type="text" name="username" id="username" autocomplete="username" required>
     </div>
     <div class="field">
-      <label>密码</label>
+      <label data-i18n="password">密码</label>
       <input type="password" name="password" id="password" autocomplete="current-password" required>
     </div>
-    <button type="submit" class="btn">登录</button>
+    <button type="submit" class="btn" data-i18n="login">登录</button>
     <div class="error" id="error"></div>
   </form>
 </div>
+<script>setLang(currentLang);</script>
 <script>
 document.getElementById('loginForm').onsubmit = async (e) => {
   e.preventDefault();
@@ -47,9 +52,8 @@ document.getElementById('loginForm').onsubmit = async (e) => {
   if (res.ok) {
     window.location.href = '/';
   } else {
-    const data = await res.json();
     const el = document.getElementById('error');
-    el.textContent = data.error || '登录失败';
+    el.textContent = t('login_error');
     el.style.display = 'block';
   }
 };
@@ -62,8 +66,9 @@ const indexHTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LiveSub 控制面板</title>
+<title>LiveSub</title>
 ` + faviconTag + `
+` + i18nScript + `
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; padding: 20px; }
@@ -99,21 +104,22 @@ const indexHTML = `<!DOCTYPE html>
 </head>
 <body>
 <div class="header">
-  <h1>🎙️ LiveSub 控制面板</h1>
+  <h1 data-i18n="control_panel">🎙️ LiveSub 控制面板</h1>
   <div class="header-right">
+    <script>document.write(langSwitcher())</script>
     <span id="userInfo"></span>
-    <a href="/admin" class="link-btn" id="adminLink" style="display:none">⚙️ 管理</a>
-    <a href="/api/logout" class="link-btn">退出登录</a>
+    <a href="/admin" class="link-btn" id="adminLink" style="display:none" data-i18n="admin">⚙️ 管理</a>
+    <a href="/api/logout" class="link-btn" data-i18n="logout">退出登录</a>
   </div>
 </div>
 <div class="rooms" id="rooms"><div class="empty">加载中...</div></div>
 
 <div style="margin-top:30px;background:#16213e;border-radius:12px;padding:20px;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-    <h2 style="font-size:18px;color:#e94560;margin:0;">📄 字幕记录</h2>
-    <button class="link-btn" onclick="loadTranscripts()">刷新</button>
+    <h2 style="font-size:18px;color:#e94560;margin:0;" data-i18n="transcripts">📄 字幕记录</h2>
+    <button class="link-btn" onclick="loadTranscripts()" data-i18n="refresh">刷新</button>
   </div>
-  <div id="transcripts" style="font-size:13px;color:#aaa;">点击刷新加载</div>
+  <div id="transcripts" style="font-size:13px;color:#aaa;" data-i18n="refresh">点击刷新加载</div>
 </div>
 <script>
 let currentUser = null;
@@ -136,20 +142,20 @@ async function fetchRooms() {
   const rooms = await res.json();
   const el = document.getElementById('rooms');
   if (!rooms || rooms.length === 0) {
-    el.innerHTML = '<div class="empty">暂无可查看的直播间</div>';
+    el.innerHTML = '<div class="empty">' + t('no_rooms') + '</div>';
     return;
   }
   el.innerHTML = rooms.map(r => ` + "`" + `
     <div class="room">
       <div class="room-header">
-        <span class="room-name">${r.name || '直播间'}</span>
+        <span class="room-name">${r.name || t('room_default')}</span>
         <span class="room-id">#${r.room_id}</span>
       </div>
       <div class="status">
-        <span class="badge ${r.live ? 'badge-live' : 'badge-offline'}">${r.live ? '🔴 直播中' : '⚫ 未开播'}</span>
-        <span class="badge ${r.paused ? 'badge-paused' : 'badge-translating'}">${r.paused ? '⏸ 已暂停' : '▶️ 翻译中'}</span>
+        <span class="badge ${r.live ? 'badge-live' : 'badge-offline'}">${r.live ? t('live') : t('offline')}</span>
+        <span class="badge ${r.paused ? 'badge-paused' : 'badge-translating'}">${r.paused ? t('paused') : t('translating')}</span>
       </div>
-      <div class="last-text">${r.stt_text || '等待语音...'}</div>
+      <div class="last-text">${r.stt_text || t('waiting_voice')}</div>
       ${r.accounts && r.accounts.length > 1 ? ` + "`" + `
       <div class="account-row">
         <label>🔑 账号:</label>
@@ -164,7 +170,7 @@ async function fetchRooms() {
       </div>
       ` + "`" + ` : '')}
       <button class="btn ${r.paused ? 'btn-resume' : 'btn-pause'}" onclick="toggle(${r.room_id})">
-        ${r.paused ? '▶️ 恢复翻译' : '⏸ 暂停翻译'}
+        ${r.paused ? t('resume_btn') : t('pause_btn')}
       </button>
     </div>
   ` + "`" + `).join('');
@@ -180,16 +186,18 @@ async function switchAccount(roomId, index) {
   fetchRooms();
 }
 
+function onLangChange() { fetchRooms(); }
+
 async function loadTranscripts() {
   const res = await fetch('/api/transcripts');
   const files = await res.json() || [];
   const el = document.getElementById('transcripts');
   if (files.length === 0) {
-    el.innerHTML = '<span style="color:#666;">暂无字幕记录</span>';
+    el.innerHTML = '<span style="color:#666;">' + t('no_transcripts') + '</span>';
     return;
   }
   el.innerHTML = '<table style="width:100%;border-collapse:collapse;">' +
-    '<tr style="color:#aaa;font-size:12px;"><th style="text-align:left;padding:6px;">文件名</th><th style="text-align:right;padding:6px;">大小</th><th style="text-align:right;padding:6px;">时间</th><th></th></tr>' +
+    '<tr style="color:#aaa;font-size:12px;"><th style="text-align:left;padding:6px;">' + t('filename') + '</th><th style="text-align:right;padding:6px;">' + t('size') + '</th><th style="text-align:right;padding:6px;">' + t('time') + '</th><th></th></tr>' +
     files.map(f => {
       const size = f.size < 1024 ? f.size + ' B' : (f.size/1024).toFixed(1) + ' KB';
       return '<tr style="border-top:1px solid #0f3460;">' +
@@ -211,8 +219,9 @@ const adminHTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LiveSub 管理</title>
+<title>LiveSub</title>
 ` + faviconTag + `
+` + i18nScript + `
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; padding: 20px; }
@@ -249,12 +258,15 @@ const adminHTML = `<!DOCTYPE html>
 </head>
 <body>
 <div class="header">
-  <h1>⚙️ 用户管理</h1>
-  <a href="/" class="link-btn">← 返回控制面板</a>
+  <div style="display:flex;align-items:center;gap:15px;">
+    <h1 data-i18n="user_mgmt">⚙️ 用户管理</h1>
+    <script>document.write(langSwitcher())</script>
+  </div>
+  <a href="/" class="link-btn" data-i18n="back">← 返回控制面板</a>
 </div>
 
 <div class="section">
-  <h2>📺 直播间管理</h2>
+  <h2 data-i18n="stream_mgmt">📺 直播间管理</h2>
   <table>
     <thead><tr><th>名称</th><th>房间号</th><th>语言</th><th>来源</th><th>操作</th></tr></thead>
     <tbody id="streamsBody"></tbody>
@@ -276,7 +288,7 @@ const adminHTML = `<!DOCTYPE html>
 </div>
 
 <div class="section">
-  <h2>👥 用户列表</h2>
+  <h2 data-i18n="user_list">👥 用户列表</h2>
   <table id="usersTable">
     <thead><tr><th>用户名</th><th>角色</th><th>直播间</th><th>B站账号</th><th>操作</th></tr></thead>
     <tbody id="usersBody"></tbody>
@@ -284,7 +296,7 @@ const adminHTML = `<!DOCTYPE html>
 </div>
 
 <div class="section">
-  <h2>➕ 添加用户</h2>
+  <h2 data-i18n="add_user">➕ 添加用户</h2>
   <div id="addMsg" class="msg"></div>
   <div class="form-row">
     <input type="text" id="newUsername" placeholder="用户名">
@@ -303,7 +315,7 @@ const adminHTML = `<!DOCTYPE html>
 </div>
 
 <div class="section">
-  <h2>🎮 B站弹幕账号</h2>
+  <h2 data-i18n="bili_accounts">🎮 B站弹幕账号</h2>
   <table id="biliTable">
     <thead><tr><th>名称</th><th>UID</th><th>弹幕上限</th><th>添加时间</th><th>状态</th><th>操作</th></tr></thead>
     <tbody id="biliBody"></tbody>
@@ -321,7 +333,7 @@ const adminHTML = `<!DOCTYPE html>
 </div>
 
 <div class="section">
-  <h2>📋 操作记录</h2>
+  <h2 data-i18n="audit_log">📋 操作记录</h2>
   <div style="margin-bottom:10px;">
     <button class="small-btn" onclick="loadAudit()" id="auditBtn">加载记录</button>
     <select id="auditLimit" style="padding:5px 8px;border:1px solid #333;border-radius:4px;background:#0f3460;color:#eee;font-size:12px;">
