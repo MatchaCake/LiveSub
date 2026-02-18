@@ -265,13 +265,15 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 
 		// Hard skip: clear music
 		// Soft skip: borderline score (0.25+) AND long text (>60 chars, likely lyrics)
+		// Fallback: very long text (>80 chars) regardless of music score (lyrics are always long)
 		softSkip := musicScore > 0.25 && textLen > 60
+		lengthSkip := textLen > 80
 
-		if isMusic || softSkip {
+		if isMusic || softSkip || lengthSkip {
 			slog.Info("🎵 skipping (music detected)", "name", sc.Name,
 				"text", result.Text, "score", fmt.Sprintf("%.2f", musicScore),
 				"conf", result.Confidence, "len", textLen,
-				"hard", isMusic, "soft", softSkip)
+				"hard", isMusic, "soft", softSkip, "longText", lengthSkip)
 			continue
 		}
 
