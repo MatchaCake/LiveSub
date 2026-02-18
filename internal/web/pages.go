@@ -111,6 +111,16 @@ const indexHTML = `<!DOCTYPE html>
     <a href="/api/logout" class="link-btn" data-i18n="logout">退出登录</a>
   </div>
 </div>
+<div id="streamerConfig" style="display:none;background:#16213e;border-radius:12px;padding:15px;margin-bottom:15px;">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span style="font-size:14px;color:#e94560;">📡 监听直播间:</span>
+    <input type="text" id="streamerName" placeholder="主播名" style="padding:6px 10px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:13px;width:120px;">
+    <input type="number" id="streamerRoom" placeholder="房间号" style="padding:6px 10px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:13px;width:100px;">
+    <input type="text" id="streamerLang" placeholder="源语言" style="padding:6px 10px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:13px;width:80px;">
+    <button onclick="switchStreamer()" style="padding:6px 16px;border:none;border-radius:6px;background:#e94560;color:#fff;cursor:pointer;font-size:13px;font-weight:bold;">切换</button>
+    <span id="switchMsg" style="font-size:12px;color:#4ecca3;display:none;"></span>
+  </div>
+</div>
 <div id="content"><div class="empty">加载中...</div></div>
 
 <div style="margin-top:30px;background:#16213e;border-radius:12px;padding:20px;">
@@ -134,6 +144,7 @@ async function init() {
     document.getElementById('adminLink').style.display = '';
   }
   fetchStatus();
+  loadStreamer();
   setInterval(fetchStatus, 2000);
 }
 
@@ -182,8 +193,42 @@ function escapeHTML(str) {
 }
 
 async function toggle(outputName) {
-  await fetch('/api/toggle?output=' + encodeURIComponent(outputName));
+  var res = await fetch('/api/toggle?output=' + encodeURIComponent(outputName));
+  var data = await res.json();
+  if (data.offline) {
+    // Stream offline, toggle is no-op
+  }
   fetchStatus();
+}
+
+async function loadStreamer() {
+  if (!currentUser || !currentUser.is_admin) return;
+  document.getElementById('streamerConfig').style.display = '';
+  var res = await fetch('/api/admin/streamer');
+  var s = await res.json();
+  document.getElementById('streamerName').value = s.name || '';
+  document.getElementById('streamerRoom').value = s.room_id || '';
+  document.getElementById('streamerLang').value = s.source_lang || '';
+}
+
+async function switchStreamer() {
+  var name = document.getElementById('streamerName').value.trim();
+  var roomID = parseInt(document.getElementById('streamerRoom').value) || 0;
+  var lang = document.getElementById('streamerLang').value.trim();
+  if (!roomID) { alert('房间号必填'); return; }
+  var res = await fetch('/api/admin/streamer', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: name, room_id: roomID, source_lang: lang})
+  });
+  if (res.ok) {
+    var msg = document.getElementById('switchMsg');
+    msg.textContent = '✅ 已切换，正在重新监听...';
+    msg.style.display = '';
+    setTimeout(function() { msg.style.display = 'none'; }, 3000);
+    fetchStatus();
+  } else {
+    alert('切换失败');
+  }
 }
 
 function onLangChange() { fetchStatus(); }
