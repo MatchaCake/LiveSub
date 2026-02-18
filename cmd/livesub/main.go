@@ -151,6 +151,12 @@ func run(cfgPath string) error {
 
 	for _, sc := range streamMap {
 		rc.Register(sc.RoomID, sc.Name)
+		// Create sender immediately so accounts are visible in web UI before stream goes live
+		sender := danmaku.NewBilibiliSender(sc.RoomID, cfg.Bilibili.SESSDATA, cfg.Bilibili.BiliJCT, cfg.Bilibili.UID)
+		if cfg.Bilibili.DanmakuMax > 0 {
+			sender.MaxLength = cfg.Bilibili.DanmakuMax
+		}
+		rc.SetSender(sc.RoomID, sender)
 	}
 
 	// Start web control panel
@@ -196,6 +202,7 @@ func run(cfgPath string) error {
 	}
 
 	webServer.Start()
+	syncAccountsToSenders() // initial sync so web UI shows accounts before any stream goes live
 
 	// Monitor live status
 	mon := monitor.NewBilibiliMonitor(30 * time.Second)
@@ -224,6 +231,13 @@ func run(cfgPath string) error {
 			if _, exists := streamMap[id]; !exists {
 				addedIDs = append(addedIDs, id)
 				rc.Register(id, sc.Name)
+				// Create sender immediately for web UI account visibility
+				currentCfg := hotCfg.Get()
+				s := danmaku.NewBilibiliSender(id, currentCfg.Bilibili.SESSDATA, currentCfg.Bilibili.BiliJCT, currentCfg.Bilibili.UID)
+				if currentCfg.Bilibili.DanmakuMax > 0 {
+					s.MaxLength = currentCfg.Bilibili.DanmakuMax
+				}
+				rc.SetSender(id, s)
 			}
 		}
 		streamMap = newStreamMap
@@ -338,28 +352,18 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}
 	defer sttClient.Close()
 
-	// 4. Danmaku sender (multi-account from DB + config fallback)
-	sender := danmaku.NewBilibiliSender(
-		sc.RoomID,
-		cfg.Bilibili.SESSDATA,
-		cfg.Bilibili.BiliJCT,
-		cfg.Bilibili.UID,
-	)
-	if cfg.Bilibili.DanmakuMax > 0 {
-		sender.MaxLength = cfg.Bilibili.DanmakuMax
-	}
-	for _, acc := range cfg.Bilibili.Accounts {
-		sender.AddAccount(danmaku.Account{
-			Name:       acc.Name,
-			SESSDATA:   acc.SESSDATA,
-			BiliJCT:    acc.BiliJCT,
-			UID:        acc.UID,
-			DanmakuMax: acc.DanmakuMax,
-		})
-	}
-	rc.SetSender(sc.RoomID, sender)
-	if syncAccounts != nil {
-		syncAccounts()
+	// 4. Reuse existing sender (created at startup/stream-add, accounts already synced)
+	sender := rc.GetSender(sc.RoomID)
+	if sender == nil {
+		// Fallback: create if somehow missing
+		sender = danmaku.NewBilibiliSender(sc.RoomID, cfg.Bilibili.SESSDATA, cfg.Bilibili.BiliJCT, cfg.Bilibili.UID)
+		if cfg.Bilibili.DanmakuMax > 0 {
+			sender.MaxLength = cfg.Bilibili.DanmakuMax
+		}
+		rc.SetSender(sc.RoomID, sender)
+		if syncAccounts != nil {
+			syncAccounts()
+		}
 	}
 
 	// 5. Transcript logger
