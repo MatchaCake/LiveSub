@@ -305,6 +305,33 @@ const adminHTML = `<!DOCTYPE html>
 </div>
 
 <div class="section">
+  <h2 data-i18n="output_mgmt">📤 输出管理</h2>
+  <table>
+    <thead><tr><th>名称</th><th>平台</th><th>目标语言</th><th>B站账号</th><th>房间号</th><th>前缀</th><th>后缀</th><th>操作</th></tr></thead>
+    <tbody id="outputsBody"></tbody>
+  </table>
+  <div style="margin-top:15px;">
+    <h3 style="font-size:14px;color:#aaa;margin-bottom:10px;" data-i18n="add_output">➕ 添加/编辑输出</h3>
+    <div id="outputMsg" class="msg"></div>
+    <div class="form-row">
+      <input type="text" id="outName" placeholder="名称">
+      <select id="outPlatform" style="padding:8px 12px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:14px;">
+        <option value="bilibili">bilibili</option>
+      </select>
+      <input type="text" id="outLang" placeholder="目标语言 (zh/en/ja)" style="width:120px;">
+      <select id="outAccount" style="padding:8px 12px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:14px;">
+      </select>
+    </div>
+    <div class="form-row">
+      <input type="number" id="outRoom" placeholder="房间号 (0=默认)" style="width:120px;">
+      <input type="text" id="outPrefix" placeholder="前缀" style="width:100px;">
+      <input type="text" id="outSuffix" placeholder="后缀" style="width:100px;">
+      <button class="add-btn" onclick="saveOutput()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="section">
   <h2 data-i18n="audit_log">📋 操作记录</h2>
   <div style="margin-bottom:10px;">
     <button class="small-btn" onclick="loadAudit()">加载记录</button>
@@ -336,6 +363,7 @@ async function init() {
   renderCheckboxes();
   loadUsers();
   loadBiliAccounts();
+  loadOutputs();
 }
 
 function renderCheckboxes() {
@@ -472,6 +500,86 @@ async function loadAudit() {
   document.getElementById('auditBody').innerHTML = entries.map(function(e) {
     return '<tr><td style="white-space:nowrap;font-size:12px;">' + escapeHTML(e.time) + '</td><td>' + escapeHTML(e.username) + '</td><td>' + escapeHTML(e.action) + '</td><td style="font-size:12px;color:#aaa;">' + escapeHTML(e.detail||'') + '</td><td style="font-size:12px;color:#666;">' + escapeHTML(e.ip||'') + '</td></tr>';
   }).join('') || '<tr><td colspan="5" style="text-align:center;color:#666;">' + t('no_log') + '</td></tr>';
+}
+
+// --- Output Management ---
+async function loadOutputs() {
+  var res = await fetch('/api/admin/outputs');
+  var outputs = await res.json() || [];
+  document.getElementById('outputsBody').innerHTML = outputs.map(function(o) {
+    return '<tr>' +
+      '<td>' + escapeHTML(o.name) + '</td>' +
+      '<td>' + escapeHTML(o.platform||'bilibili') + '</td>' +
+      '<td>' + escapeHTML(o.target_lang||'(原文)') + '</td>' +
+      '<td>' + escapeHTML(o.account) + '</td>' +
+      '<td>' + (o.room_id||0) + '</td>' +
+      '<td style="font-size:12px;color:#aaa;">' + escapeHTML(o.prefix||'') + '</td>' +
+      '<td style="font-size:12px;color:#aaa;">' + escapeHTML(o.suffix||'') + '</td>' +
+      '<td>' +
+        '<button class="small-btn" onclick="editOutput(\'' + escapeHTML(o.name).replace(/'/g,"\\'") + '\')">编辑</button> ' +
+        '<button class="small-btn danger" onclick="deleteOutput(\'' + escapeHTML(o.name).replace(/'/g,"\\'") + '\')">删除</button>' +
+      '</td></tr>';
+  }).join('') || '<tr><td colspan="8" style="text-align:center;color:#666;">暂无输出</td></tr>';
+  var sel = document.getElementById('outAccount');
+  sel.innerHTML = '<option value="">(选择账号)</option>' + allAccounts.map(function(a) {
+    return '<option value="' + escapeHTML(a) + '">' + escapeHTML(a) + '</option>';
+  }).join('');
+}
+
+async function saveOutput() {
+  var name = document.getElementById('outName').value.trim();
+  var msgEl = document.getElementById('outputMsg');
+  if (!name) { msgEl.className = 'msg err'; msgEl.textContent = '名称必填'; return; }
+  var body = {
+    name: name,
+    platform: document.getElementById('outPlatform').value,
+    target_lang: document.getElementById('outLang').value.trim(),
+    account: document.getElementById('outAccount').value,
+    room_id: parseInt(document.getElementById('outRoom').value) || 0,
+    prefix: document.getElementById('outPrefix').value,
+    suffix: document.getElementById('outSuffix').value
+  };
+  var res = await fetch('/api/admin/outputs', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  if (res.ok) {
+    msgEl.className = 'msg ok'; msgEl.textContent = '已保存: ' + name;
+    clearOutputForm();
+    loadOutputs();
+  } else {
+    var data = await res.json();
+    msgEl.className = 'msg err'; msgEl.textContent = data.error || '保存失败';
+  }
+}
+
+async function editOutput(name) {
+  var res = await fetch('/api/admin/outputs');
+  var outputs = await res.json() || [];
+  var o = outputs.find(function(x) { return x.name === name; });
+  if (!o) return;
+  document.getElementById('outName').value = o.name;
+  document.getElementById('outPlatform').value = o.platform || 'bilibili';
+  document.getElementById('outLang').value = o.target_lang || '';
+  document.getElementById('outAccount').value = o.account || '';
+  document.getElementById('outRoom').value = o.room_id || 0;
+  document.getElementById('outPrefix').value = o.prefix || '';
+  document.getElementById('outSuffix').value = o.suffix || '';
+}
+
+async function deleteOutput(name) {
+  if (!confirm('确定删除输出 ' + name + '?')) return;
+  await fetch('/api/admin/outputs?name=' + encodeURIComponent(name), {method: 'DELETE'});
+  loadOutputs();
+}
+
+function clearOutputForm() {
+  document.getElementById('outName').value = '';
+  document.getElementById('outLang').value = '';
+  document.getElementById('outAccount').value = '';
+  document.getElementById('outRoom').value = '';
+  document.getElementById('outPrefix').value = '';
+  document.getElementById('outSuffix').value = '';
 }
 
 init();
