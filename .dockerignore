@@ -1,0 +1,12 @@
+configs/
+logs/
+*.db
+livesub
+livesub.exe
+.git
+.github
+.gitignore
+CLAUDE.md
+LICENSE
+README.md
+*.md
