@@ -116,7 +116,16 @@ const indexHTML = `<!DOCTYPE html>
     <span style="font-size:14px;color:#e94560;">📡 监听直播间:</span>
     <input type="text" id="streamerName" placeholder="主播名" style="padding:6px 10px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:13px;width:120px;">
     <input type="number" id="streamerRoom" placeholder="房间号" style="padding:6px 10px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:13px;width:100px;">
-    <input type="text" id="streamerLang" placeholder="源语言" style="padding:6px 10px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:13px;width:80px;">
+    <select id="streamerLang" style="padding:6px 10px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:13px;">
+      <option value="ja">日本語 (ja)</option>
+      <option value="zh">中文 (zh)</option>
+      <option value="en">English (en)</option>
+      <option value="ko">한국어 (ko)</option>
+      <option value="fr">Français (fr)</option>
+      <option value="de">Deutsch (de)</option>
+      <option value="es">Español (es)</option>
+      <option value="ru">Русский (ru)</option>
+    </select>
     <button onclick="switchStreamer()" style="padding:6px 16px;border:none;border-radius:6px;background:#e94560;color:#fff;cursor:pointer;font-size:13px;font-weight:bold;">切换</button>
     <span id="switchMsg" style="font-size:12px;color:#4ecca3;display:none;"></span>
   </div>
@@ -363,7 +372,17 @@ const adminHTML = `<!DOCTYPE html>
       <select id="outPlatform" style="padding:8px 12px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:14px;">
         <option value="bilibili">bilibili</option>
       </select>
-      <input type="text" id="outLang" placeholder="目标语言 (zh/en/ja)" style="width:120px;">
+      <select id="outLang" style="padding:8px 12px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:14px;">
+        <option value="">(原文直传)</option>
+        <option value="zh">中文 (zh)</option>
+        <option value="en">English (en)</option>
+        <option value="ja">日本語 (ja)</option>
+        <option value="ko">한국어 (ko)</option>
+        <option value="fr">Français (fr)</option>
+        <option value="de">Deutsch (de)</option>
+        <option value="es">Español (es)</option>
+        <option value="ru">Русский (ru)</option>
+      </select>
       <select id="outAccount" style="padding:8px 12px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:14px;">
       </select>
     </div>
@@ -565,6 +584,7 @@ async function loadOutputs() {
         '<button class="small-btn danger" onclick="deleteOutput(\'' + escapeHTML(o.name).replace(/'/g,"\\'") + '\')">删除</button>' +
       '</td></tr>';
   }).join('') || '<tr><td colspan="8" style="text-align:center;color:#666;">暂无输出</td></tr>';
+  cachedOutputs = outputs;
   var sel = document.getElementById('outAccount');
   sel.innerHTML = '<option value="">(选择账号)</option>' + allAccounts.map(function(a) {
     return '<option value="' + escapeHTML(a) + '">' + escapeHTML(a) + '</option>';
@@ -598,18 +618,35 @@ async function saveOutput() {
   }
 }
 
+var cachedOutputs = [];
+
 async function editOutput(name) {
-  var res = await fetch('/api/admin/outputs');
-  var outputs = await res.json() || [];
-  var o = outputs.find(function(x) { return x.name === name; });
+  var o = cachedOutputs.find(function(x) { return x.name === name; });
+  if (!o) {
+    var res = await fetch('/api/admin/outputs');
+    cachedOutputs = await res.json() || [];
+    o = cachedOutputs.find(function(x) { return x.name === name; });
+  }
   if (!o) return;
   document.getElementById('outName').value = o.name;
   document.getElementById('outPlatform').value = o.platform || 'bilibili';
   document.getElementById('outLang').value = o.target_lang || '';
-  document.getElementById('outAccount').value = o.account || '';
+  // Ensure account dropdown has the value
+  var sel = document.getElementById('outAccount');
+  sel.value = o.account || '';
+  if (sel.value !== (o.account || '')) {
+    // Account not in dropdown, add it
+    var opt = document.createElement('option');
+    opt.value = o.account;
+    opt.textContent = o.account;
+    sel.appendChild(opt);
+    sel.value = o.account;
+  }
   document.getElementById('outRoom').value = o.room_id || 0;
   document.getElementById('outPrefix').value = o.prefix || '';
   document.getElementById('outSuffix').value = o.suffix || '';
+  // Scroll to form
+  document.getElementById('outName').scrollIntoView({behavior: 'smooth'});
 }
 
 async function deleteOutput(name) {
@@ -620,8 +657,8 @@ async function deleteOutput(name) {
 
 function clearOutputForm() {
   document.getElementById('outName').value = '';
-  document.getElementById('outLang').value = '';
-  document.getElementById('outAccount').value = '';
+  document.getElementById('outLang').selectedIndex = 0;
+  document.getElementById('outAccount').selectedIndex = 0;
   document.getElementById('outRoom').value = '';
   document.getElementById('outPrefix').value = '';
   document.getElementById('outSuffix').value = '';
