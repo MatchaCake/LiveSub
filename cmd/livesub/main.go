@@ -208,34 +208,100 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 		targetLang = cfg.Gemini.TargetLang
 	}
 
+	// Parallel translate → ordered send pipeline
+	type translatedMsg struct {
+		seq  int
+		text string
+	}
+
+	const numWorkers = 3
+	type translateJob struct {
+		seq    int
+		text   string
+		lang   string
+		direct bool // already in target lang, skip translation
+	}
+
+	jobCh := make(chan translateJob, 50)
+	doneCh := make(chan translatedMsg, 50)
+
+	// Translation workers (parallel)
+	var workerWg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		workerWg.Add(1)
+		go func(id int) {
+			defer workerWg.Done()
+			for job := range jobCh {
+				if job.direct {
+					doneCh <- translatedMsg{seq: job.seq, text: job.text}
+					continue
+				}
+				translated, err := translator.Translate(ctx, job.text, job.lang)
+				if err != nil {
+					slog.Error("translate error", "worker", id, "name", sc.Name, "err", err)
+					doneCh <- translatedMsg{seq: job.seq, text: ""}
+					continue
+				}
+				if translated != "" {
+					slog.Info("📝 translated", "worker", id, "name", sc.Name, "src", job.text, "dst", translated)
+				}
+				doneCh <- translatedMsg{seq: job.seq, text: translated}
+			}
+		}(i)
+	}
+
+	// Close doneCh when all workers finish
+	go func() {
+		workerWg.Wait()
+		close(doneCh)
+	}()
+
+	// Ordered sender: buffer out-of-order results, send in sequence
+	go func() {
+		nextSeq := 0
+		pending := make(map[int]string)
+		for msg := range doneCh {
+			pending[msg.seq] = msg.text
+			// Flush consecutive ready messages
+			for {
+				text, ok := pending[nextSeq]
+				if !ok {
+					break
+				}
+				delete(pending, nextSeq)
+				nextSeq++
+				if text == "" {
+					continue
+				}
+				slog.Info("📝 sending", "name", sc.Name, "seq", nextSeq-1, "text", text)
+				if err := sender.Send(text); err != nil {
+					slog.Error("danmaku error", "name", sc.Name, "err", err)
+				}
+			}
+		}
+	}()
+
+	// Dispatch STT results to workers
+	seq := 0
 	for result := range resultsCh {
 		if !result.IsFinal {
 			continue
 		}
 
-		// If already in target language, send directly
-		if isTargetLang(result.Language, targetLang) {
+		direct := isTargetLang(result.Language, targetLang)
+		if direct {
 			slog.Info("📝 direct", "name", sc.Name, "text", result.Text, "lang", result.Language)
-			if err := sender.Send(result.Text); err != nil {
-				slog.Error("danmaku error", "name", sc.Name, "err", err)
-			}
-			continue
 		}
 
-		translated, err := translator.Translate(ctx, result.Text, result.Language)
-		if err != nil {
-			slog.Error("translate error", "name", sc.Name, "err", err)
-			continue
+		jobCh <- translateJob{
+			seq:    seq,
+			text:   result.Text,
+			lang:   result.Language,
+			direct: direct,
 		}
-		if translated == "" {
-			continue
-		}
-
-		slog.Info("📝 translated", "name", sc.Name, "src", result.Text, "dst", translated, "lang", result.Language)
-		if err := sender.Send(translated); err != nil {
-			slog.Error("danmaku error", "name", sc.Name, "err", err)
-		}
+		seq++
 	}
+	close(jobCh)
 
 	return nil
 }

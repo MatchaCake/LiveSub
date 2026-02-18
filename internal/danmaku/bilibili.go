@@ -1,6 +1,7 @@
 package danmaku
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -52,8 +53,7 @@ func (s *BilibiliSender) Send(msg string) error {
 		return s.sendOne(wrapped)
 	}
 
-	// Split: first chunk 【text..., rest ...text】
-	// Effective content per chunk = maxLen - 1 (for 【 or 】)
+	// Split into chunks, each wrapped in 【】
 	contentRunes := []rune(msg)
 	chunkSize := maxLen - 2 // reserve for 【】
 	if chunkSize < 1 {
@@ -65,16 +65,7 @@ func (s *BilibiliSender) Send(msg string) error {
 		if end > len(contentRunes) {
 			end = len(contentRunes)
 		}
-		chunk := string(contentRunes[i:end])
-
-		// First chunk: 【text  Middle: text  Last: text】
-		if i == 0 && end < len(contentRunes) {
-			chunk = "【" + chunk
-		} else if i == 0 {
-			chunk = "【" + chunk + "】"
-		} else if end >= len(contentRunes) {
-			chunk = chunk + "】"
-		}
+		chunk := "【" + string(contentRunes[i:end]) + "】"
 
 		if err := s.sendOne(chunk); err != nil {
 			return err
@@ -124,7 +115,24 @@ func (s *BilibiliSender) sendOne(msg string) error {
 		return fmt.Errorf("danmaku API %d: %s", resp.StatusCode, string(body))
 	}
 
+	// Parse response to check for errors
+	var result struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Msg     string `json:"msg"`
+	}
+	if err := json.Unmarshal(body, &result); err == nil && result.Code != 0 {
+		errMsg := result.Message
+		if errMsg == "" {
+			errMsg = result.Msg
+		}
+		// Log but don't return error for content-related failures (sensitive words etc.)
+		// These are not retryable
+		slog.Warn("danmaku rejected", "room", s.RoomID, "msg", msg, "code", result.Code, "error", errMsg)
+		return nil
+	}
+
 	s.lastSend = time.Now()
-	slog.Debug("danmaku sent", "room", s.RoomID, "msg", msg)
+	slog.Info("danmaku sent", "room", s.RoomID, "msg", msg)
 	return nil
 }
