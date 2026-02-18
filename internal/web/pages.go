@@ -252,6 +252,24 @@ const adminHTML = `<!DOCTYPE html>
 </div>
 
 <div class="section">
+  <h2>🎮 B站弹幕账号</h2>
+  <table id="biliTable">
+    <thead><tr><th>名称</th><th>UID</th><th>弹幕上限</th><th>添加时间</th><th>状态</th><th>操作</th></tr></thead>
+    <tbody id="biliBody"></tbody>
+  </table>
+  <div style="margin-top:15px;">
+    <button class="add-btn" onclick="startQRLogin()" id="qrBtn">📱 扫码添加账号</button>
+  </div>
+  <div id="qrArea" style="display:none;margin-top:15px;text-align:center;">
+    <div style="font-size:14px;color:#aaa;margin-bottom:10px;" id="qrStatus">请用B站手机APP扫描二维码</div>
+    <div id="qrImage" style="background:#fff;display:inline-block;padding:10px;border-radius:8px;"></div>
+    <div style="margin-top:10px;">
+      <button class="small-btn" onclick="cancelQR()">取消</button>
+    </div>
+  </div>
+</div>
+
+<div class="section">
   <h2>📋 操作记录</h2>
   <div style="margin-bottom:10px;">
     <button class="small-btn" onclick="loadAudit()" id="auditBtn">加载记录</button>
@@ -280,6 +298,7 @@ async function init() {
   allAccounts = await acctsRes.json() || [];
   renderCheckboxes();
   loadUsers();
+  loadBiliAccounts();
 }
 
 function renderCheckboxes() {
@@ -388,6 +407,88 @@ async function deleteUser(id, name) {
   await fetch('/api/admin/user?id=' + id, {method: 'DELETE'});
   loadUsers();
 }
+
+// --- Bilibili accounts ---
+
+async function loadBiliAccounts() {
+  const res = await fetch('/api/admin/bili-accounts');
+  const accounts = await res.json() || [];
+  const body = document.getElementById('biliBody');
+  body.innerHTML = accounts.map(a => {
+    const status = a.valid ? '<span style="color:#4ecca3;">✅ 有效</span>' : '<span style="color:#e94560;">❌ 已失效</span>';
+    return '<tr>' +
+      '<td>' + a.name + '</td>' +
+      '<td>' + (a.uid || '-') + '</td>' +
+      '<td><input type="number" value="' + a.danmaku_max + '" style="width:60px;padding:4px;border:1px solid #333;border-radius:4px;background:#0f3460;color:#eee;font-size:13px;" onchange="updateBiliMax(' + a.id + ',this.value)"></td>' +
+      '<td style="font-size:12px;color:#aaa;">' + (a.created_at||'') + '</td>' +
+      '<td>' + status + '</td>' +
+      '<td><button class="small-btn danger" onclick="deleteBiliAccount(' + a.id + ',\'' + a.name.replace(/'/g,"\\'") + '\')">删除</button></td>' +
+    '</tr>';
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:#666;">暂无账号，点击下方扫码添加</td></tr>';
+}
+
+async function updateBiliMax(id, val) {
+  await fetch('/api/admin/bili-account?id=' + id, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({danmaku_max: parseInt(val)})
+  });
+}
+
+async function deleteBiliAccount(id, name) {
+  if (!confirm('确定删除B站账号 ' + name + '?')) return;
+  await fetch('/api/admin/bili-account?id=' + id, {method: 'DELETE'});
+  loadBiliAccounts();
+}
+
+let qrPollTimer = null;
+
+async function startQRLogin() {
+  const res = await fetch('/api/admin/bili-qr/generate');
+  const data = await res.json();
+  if (!data.url) { alert('生成二维码失败'); return; }
+
+  document.getElementById('qrArea').style.display = '';
+  document.getElementById('qrBtn').style.display = 'none';
+  document.getElementById('qrStatus').textContent = '请用B站手机APP扫描二维码';
+  // Use a QR code image API
+  document.getElementById('qrImage').innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(data.url) + '" alt="QR Code" style="width:200px;height:200px;">';
+
+  // Start polling
+  qrPollTimer = setInterval(async () => {
+    const pollRes = await fetch('/api/admin/bili-qr/poll?key=' + data.qrcode_key);
+    const pollData = await pollRes.json();
+
+    switch (pollData.status) {
+      case 'waiting':
+        break;
+      case 'scanned':
+        document.getElementById('qrStatus').textContent = '✅ 已扫码，请在手机上确认';
+        break;
+      case 'confirmed':
+        cancelQR();
+        alert('登录成功！账号: ' + pollData.name + ' (UID: ' + pollData.uid + ')');
+        loadBiliAccounts();
+        break;
+      case 'expired':
+        cancelQR();
+        alert('二维码已过期，请重新生成');
+        break;
+      case 'error':
+        cancelQR();
+        alert('登录失败: ' + (pollData.error || '未知错误'));
+        break;
+    }
+  }, 2000);
+}
+
+function cancelQR() {
+  if (qrPollTimer) { clearInterval(qrPollTimer); qrPollTimer = null; }
+  document.getElementById('qrArea').style.display = 'none';
+  document.getElementById('qrBtn').style.display = '';
+}
+
+// --- Audit ---
 
 async function loadAudit() {
   const limit = document.getElementById('auditLimit').value;

@@ -125,6 +125,44 @@ func run(cfgPath string) error {
 		webPort = 8899
 	}
 	webServer := web.NewServer(rc, webPort, authStore)
+
+	// Sync DB accounts to all active senders
+	syncAccountsToSenders := func() {
+		dbAccounts, err := authStore.ListBiliAccounts()
+		if err != nil {
+			slog.Error("load bili accounts from DB", "err", err)
+			return
+		}
+		// Build account list: config default + DB accounts
+		currentCfg := hotCfg.Get()
+		var accounts []danmaku.Account
+		if currentCfg.Bilibili.SESSDATA != "" {
+			accounts = append(accounts, danmaku.Account{
+				Name: "默认(配置)", SESSDATA: currentCfg.Bilibili.SESSDATA,
+				BiliJCT: currentCfg.Bilibili.BiliJCT, UID: currentCfg.Bilibili.UID,
+				DanmakuMax: currentCfg.Bilibili.DanmakuMax,
+			})
+		}
+		for _, a := range dbAccounts {
+			if !a.Valid {
+				continue
+			}
+			accounts = append(accounts, danmaku.Account{
+				Name: a.Name, SESSDATA: a.SESSDATA,
+				BiliJCT: a.BiliJCT, UID: a.UID,
+				DanmakuMax: a.DanmakuMax,
+			})
+		}
+		// Update all senders
+		for _, room := range rc.GetAll() {
+			if sender := rc.GetSender(room.RoomID); sender != nil {
+				sender.SetAccounts(accounts)
+			}
+		}
+		slog.Info("synced bili accounts to senders", "count", len(accounts))
+	}
+
+	webServer.OnAccountChange(syncAccountsToSenders)
 	webServer.Start()
 
 	// Monitor live status
@@ -184,27 +222,8 @@ func run(cfgPath string) error {
 			mon.AddRooms(addedIDs)
 		}
 
-		// Update danmaku accounts on all active senders
-		if len(newCfg.Bilibili.Accounts) > 0 {
-			for _, sc := range newCfg.Streams {
-				if sender := rc.GetSender(sc.RoomID); sender != nil {
-					var accounts []danmaku.Account
-					// Default account first
-					accounts = append(accounts, danmaku.Account{
-						Name: "默认", SESSDATA: newCfg.Bilibili.SESSDATA,
-						BiliJCT: newCfg.Bilibili.BiliJCT, UID: newCfg.Bilibili.UID,
-					})
-					for _, acc := range newCfg.Bilibili.Accounts {
-						accounts = append(accounts, danmaku.Account{
-							Name: acc.Name, SESSDATA: acc.SESSDATA,
-							BiliJCT: acc.BiliJCT, UID: acc.UID,
-							DanmakuMax: acc.DanmakuMax,
-						})
-					}
-					sender.SetAccounts(accounts)
-				}
-			}
-		}
+		// Sync all accounts (config + DB) to senders
+		syncAccountsToSenders()
 
 		slog.Info("🔄 streams reloaded",
 			"total", len(newCfg.Streams),
@@ -239,7 +258,7 @@ func run(cfgPath string) error {
 				mu.Unlock()
 
 				go func(sc config.StreamConfig, streamCtx context.Context, streamCancel context.CancelFunc) {
-					if err := runStream(streamCtx, hotCfg.Get(), sc, translator, pool, rc); err != nil {
+					if err := runStream(streamCtx, hotCfg.Get(), sc, translator, pool, rc, syncAccountsToSenders); err != nil {
 						slog.Error("stream ended", "name", sc.Name, "err", err)
 					}
 					streamCancel()
@@ -267,7 +286,7 @@ func run(cfgPath string) error {
 	return mon.Watch(ctx, roomIDs, events)
 }
 
-func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, translator *translate.GeminiTranslator, pool *translatePool, rc *web.RoomControl) error {
+func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, translator *translate.GeminiTranslator, pool *translatePool, rc *web.RoomControl, syncAccounts func()) error {
 	// 1. Get live stream URL
 	streamURL, err := audio.GetBilibiliStreamURL(sc.RoomID)
 	if err != nil {
@@ -290,7 +309,7 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}
 	defer sttClient.Close()
 
-	// 4. Danmaku sender (multi-account)
+	// 4. Danmaku sender (multi-account from DB + config fallback)
 	sender := danmaku.NewBilibiliSender(
 		sc.RoomID,
 		cfg.Bilibili.SESSDATA,
@@ -300,7 +319,7 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	if cfg.Bilibili.DanmakuMax > 0 {
 		sender.MaxLength = cfg.Bilibili.DanmakuMax
 	}
-	// Add extra accounts from config
+	// Add config accounts as fallback
 	for _, acc := range cfg.Bilibili.Accounts {
 		sender.AddAccount(danmaku.Account{
 			Name:       acc.Name,
@@ -311,6 +330,10 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 		})
 	}
 	rc.SetSender(sc.RoomID, sender)
+	// Sync DB accounts (overwrites with full list including DB accounts)
+	if syncAccounts != nil {
+		syncAccounts()
+	}
 
 	// Pipeline: STT → Translate → Send
 	// Use a pausable reader that discards audio when paused (saves STT cost)

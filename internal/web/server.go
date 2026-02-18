@@ -171,10 +171,11 @@ type session struct {
 
 // Server serves the control panel with SQLite-based authentication
 type Server struct {
-	rc       *RoomControl
-	port     int
-	store    *auth.Store
-	sessions sync.Map // token → session
+	rc              *RoomControl
+	port            int
+	store           *auth.Store
+	sessions        sync.Map // token → session
+	onAccountChange func()   // called when bili accounts change
 }
 
 func NewServer(rc *RoomControl, port int, store *auth.Store) *Server {
@@ -183,6 +184,11 @@ func NewServer(rc *RoomControl, port int, store *auth.Store) *Server {
 		port:  port,
 		store: store,
 	}
+}
+
+// OnAccountChange registers a callback when bilibili accounts change.
+func (s *Server) OnAccountChange(fn func()) {
+	s.onAccountChange = fn
 }
 
 func (s *Server) Start() {
@@ -207,6 +213,10 @@ func (s *Server) Start() {
 	mux.HandleFunc("/api/admin/all-rooms", s.requireAdmin(s.handleAdminAllRooms))
 	mux.HandleFunc("/api/admin/all-accounts", s.requireAdmin(s.handleAdminAllAccounts))
 	mux.HandleFunc("/api/admin/audit", s.requireAdmin(s.handleAdminAudit))
+	mux.HandleFunc("/api/admin/bili-accounts", s.requireAdmin(s.handleBiliAccounts))
+	mux.HandleFunc("/api/admin/bili-account", s.requireAdmin(s.handleBiliAccount))
+	mux.HandleFunc("/api/admin/bili-qr/generate", s.requireAdmin(s.handleBiliQRGenerate))
+	mux.HandleFunc("/api/admin/bili-qr/poll", s.requireAdmin(s.handleBiliQRPoll))
 
 	addr := fmt.Sprintf(":%d", s.port)
 	slog.Info("web control panel started", "addr", addr)
@@ -555,7 +565,7 @@ func (s *Server) handleAdminAllRooms(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminAllAccounts(w http.ResponseWriter, r *http.Request) {
-	// Collect unique account names across all senders
+	// Collect unique account names from senders + DB
 	seen := make(map[string]bool)
 	var names []string
 	for _, room := range s.rc.GetAll() {
@@ -566,8 +576,124 @@ func (s *Server) handleAdminAllAccounts(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
+	// Also include DB accounts not yet synced to senders
+	if dbAccounts, err := s.store.ListBiliAccountSummaries(); err == nil {
+		for _, a := range dbAccounts {
+			if !seen[a.Name] {
+				seen[a.Name] = true
+				names = append(names, a.Name)
+			}
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(names)
+}
+
+// --- Bilibili Account Management ---
+
+func (s *Server) handleBiliAccounts(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	accounts, err := s.store.ListBiliAccountSummaries()
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, 500)
+		return
+	}
+	if accounts == nil {
+		accounts = []auth.BiliAccountSummary{}
+	}
+	json.NewEncoder(w).Encode(accounts)
+}
+
+func (s *Server) handleBiliAccount(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	idStr := r.URL.Query().Get("id")
+	id, _ := strconv.ParseInt(idStr, 10, 64)
+
+	switch r.Method {
+	case "PUT":
+		var req struct {
+			DanmakuMax *int `json:"danmaku_max"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		if req.DanmakuMax != nil {
+			s.store.UpdateBiliAccountDanmakuMax(id, *req.DanmakuMax)
+		}
+		s.notifyAccountChange()
+		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+
+	case "DELETE":
+		s.store.DeleteBiliAccount(id)
+		s.audit(r, "删除B站账号", fmt.Sprintf("ID=%d", id))
+		s.notifyAccountChange()
+		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+
+	default:
+		http.Error(w, "method not allowed", 405)
+	}
+}
+
+func (s *Server) handleBiliQRGenerate(w http.ResponseWriter, r *http.Request) {
+	qr, err := auth.GenerateQRCode()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(500)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(qr)
+}
+
+func (s *Server) handleBiliQRPoll(w http.ResponseWriter, r *http.Request) {
+	qrcodeKey := r.URL.Query().Get("key")
+	if qrcodeKey == "" {
+		http.Error(w, `{"error":"missing key"}`, 400)
+		return
+	}
+
+	result, err := auth.PollQRCode(qrcodeKey)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(500)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if result.Status == "confirmed" {
+		// Get username from Bilibili
+		name := fmt.Sprintf("UID_%d", result.UID)
+		if uname, err := auth.GetBiliUserInfo(result.SESSDATA); err == nil {
+			name = uname
+		}
+
+		// Save to DB
+		acc, err := s.store.SaveBiliAccount(name, result.SESSDATA, result.BiliJCT, result.UID, 20, "")
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "error": err.Error()})
+			return
+		}
+
+		s.audit(r, "添加B站账号", fmt.Sprintf("%s (UID: %d)", name, result.UID))
+		s.notifyAccountChange()
+
+		json.NewEncoder(w).Encode(map[string]any{
+			"status": "confirmed",
+			"name":   name,
+			"uid":    result.UID,
+			"id":     acc.ID,
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"status": result.Status})
+}
+
+func (s *Server) notifyAccountChange() {
+	if s.onAccountChange != nil {
+		s.onAccountChange()
+	}
 }
 
 // --- Audit ---
