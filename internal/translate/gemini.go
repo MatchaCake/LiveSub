@@ -11,12 +11,11 @@ import (
 
 // GeminiTranslator translates text using Gemini API.
 type GeminiTranslator struct {
-	client     *genai.Client
-	model      string
-	targetLang string
+	client *genai.Client
+	model  string
 }
 
-func NewGeminiTranslator(ctx context.Context, apiKey, model, targetLang string) (*GeminiTranslator, error) {
+func NewGeminiTranslator(ctx context.Context, apiKey, model string) (*GeminiTranslator, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey: apiKey,
 	})
@@ -25,14 +24,13 @@ func NewGeminiTranslator(ctx context.Context, apiKey, model, targetLang string) 
 	}
 
 	return &GeminiTranslator{
-		client:     client,
-		model:      model,
-		targetLang: targetLang,
+		client: client,
+		model:  model,
 	}, nil
 }
 
-// Translate translates text to the target language.
-func (t *GeminiTranslator) Translate(ctx context.Context, text, sourceLang string) (string, error) {
+// Translate translates text from sourceLang to targetLang.
+func (t *GeminiTranslator) Translate(ctx context.Context, text, sourceLang, targetLang string) (string, error) {
 	if strings.TrimSpace(text) == "" {
 		return "", nil
 	}
@@ -41,7 +39,7 @@ func (t *GeminiTranslator) Translate(ctx context.Context, text, sourceLang strin
 		"Translate the following %s text to %s. "+
 			"Output ONLY the translation, nothing else. "+
 			"Keep it natural and concise (suitable for live stream subtitles).\n\n%s",
-		sourceLang, t.targetLang, text,
+		sourceLang, targetLang, text,
 	)
 
 	resp, err := t.client.Models.GenerateContent(ctx, t.model, genai.Text(prompt), nil)
@@ -52,7 +50,7 @@ func (t *GeminiTranslator) Translate(ctx context.Context, text, sourceLang strin
 	result := resp.Text()
 	result = strings.TrimSpace(result)
 
-	slog.Debug("translated", "from", text, "to", result)
+	slog.Debug("translated", "from", text, "to", result, "target", targetLang)
 	return result, nil
 }
 

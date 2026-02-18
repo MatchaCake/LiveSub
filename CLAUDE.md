@@ -1,52 +1,66 @@
 # CLAUDE.md — LiveSub
 
 ## Overview
-Real-time Bilibili live stream translator. Captures audio via ffmpeg, transcribes with Google Cloud STT, translates with Gemini, sends translated danmaku to Bilibili. Web control panel with multi-user auth.
+Real-time Bilibili live stream translator. One Docker container per streamer. Captures audio via ffmpeg, transcribes with Google Cloud STT, translates to multiple languages with Gemini, sends translated danmaku to Bilibili via bot pool. Web control panel with multi-user auth.
 
 ## Module
 `github.com/christian-lee/livesub`
 
 ## Architecture
 ```
-ffmpeg (PCM) → Google STT → Shared Translation Pool (Gemini) → Ordered Sender → Bilibili Danmaku API
-                                                                      ↓
-                                                              Transcript CSV
+Agent (per streamer):
+  ffmpeg (PCM) → Google STT → Translation Fan-out (Gemini) → Controller
+
+Controller:
+  Receives multi-lang Translation → routes to Outputs → Bot Pool
+
+Bot Pool:
+  BilibiliBot (danmaku sender) — future: YouTubeBot, TwitchBot
+                              ↓
+                       Transcript CSV
 ```
+
+### 3-Layer Design
+1. **Agent** — Captures audio stream, runs STT, fans out to multi-language translation, submits to Controller
+2. **Controller** — Receives translations, routes to correct bots per output config, manages per-output ordering & pause
+3. **Bot Pool** — Platform-specific senders (BilibiliBot), pooled and reusable
 
 ### Key Packages
 - `cmd/livesub/main.go` — Pipeline orchestration, hot reload, stream lifecycle
+- `internal/agent/` — Agent pipeline (STT → translate → submit)
+- `internal/bot/` — Bot interface, BilibiliBot, Pool (uses `github.com/MatchaCake/bilibili_dm_lib`)
+- `internal/controller/` — Translation routing, ordered sender, pause control
 - `internal/audio/` — ffmpeg capture (`capture.go`), Bilibili stream URL fetch (`bilibili.go`)
 - `internal/stt/` — Google Cloud STT streaming client with auto-reconnect
-- `internal/translate/` — Gemini translation client
-- `internal/danmaku/` — Multi-account danmaku sender (uses `github.com/MatchaCake/bilibili_dm_lib`)
-- `internal/monitor/` — Bilibili room live/offline poller
-- `internal/web/` — HTTP server, auth, room control, admin panel
-- `internal/auth/` — SQLite user/session/account/stream management, Bilibili QR login
-- `internal/transcript/` — CSV transcript logging
+- `internal/translate/` — Gemini translation client (target lang per-call)
+- `internal/web/` — HTTP server, auth, control panel, admin panel
+- `internal/auth/` — SQLite user/session/account management, Bilibili QR login
+- `internal/transcript/` — Multi-language CSV transcript logging
 - `internal/config/` — YAML config with fsnotify hot reload
 
 ### Concurrency Model
-- One goroutine per active stream pipeline (STT + translation + sending)
-- Shared translation worker pool (N×3 workers) across all streams
-- Per-stream ordered sender (sequence numbers) preserves subtitle order
-- `sync.Mutex` protects streamMap and active streams map
-- `sync.RWMutex` in RoomControl, BilibiliMonitor, BilibiliSender
+- One goroutine for Agent pipeline (STT + translation fan-out)
+- Controller runs ordered sender per output
+- Translation fan-out: parallel goroutines translate to N languages from single STT result
+- Per-output ordered sender (sequence numbers + pending map) preserves subtitle order
+- `sync.Mutex` protects active stream state
+- `sync.RWMutex` in Controller, Bot Pool
 - SQLite with `MaxOpenConns(1)` + WAL mode + busy_timeout
 
 ### Web UI
-- Login page, control panel (room cards), admin panel
+- Login page, control panel (streamer card with output cards), admin panel
 - i18n: zh/en/ja with localStorage persistence
-- Room cards: live status, pause/resume, account selector, transcripts
-- Admin: stream management, user management, Bilibili QR login, audit log
+- Output cards: platform, target_lang, bot assignment, last text, pause/resume
+- Admin: user management, Bilibili QR login, audit log
 
 ## Config
-`configs/config.yaml` — Google STT credentials, Gemini API key, Bilibili cookies, streams, web port, auth
+`configs/config.yaml` — Per-streamer config: STT credentials, Gemini API key, outputs (platform + lang + bot), bots, web port, auth
 
 ## Dependencies
 - `github.com/MatchaCake/bilibili_dm_lib` — Danmaku sending
+- `github.com/MatchaCake/bilibili_stream_lib` — Stream monitoring & audio capture
 - `cloud.google.com/go/speech` — Google STT
 - `google.golang.org/genai` — Gemini
-- `github.com/gorilla/websocket` — (transitive via dm_lib)
 - `github.com/mattn/go-sqlite3` — SQLite
 - `github.com/fsnotify/fsnotify` — Config hot reload
 - ffmpeg (system binary)
@@ -54,12 +68,14 @@ ffmpeg (PCM) → Google STT → Shared Translation Pool (Gemini) → Ordered Sen
 ## Build & Deploy
 ```bash
 go build -o livesub ./cmd/livesub
-sudo systemctl restart livesub
+# Docker (one container per streamer):
+docker build -t livesub .
+docker run -v ./configs:/app/configs livesub
 ```
 
 ## Data
-- `configs/users.db` — SQLite (users, sessions, accounts, streams, audit)
-- `configs/transcripts/` — CSV per stream session
+- `configs/users.db` — SQLite (users, sessions, accounts, audit)
+- `configs/transcripts/` — CSV per stream session (5 columns: time, source_lang, source, target_lang, translated)
 
 ## Git
 - Author: MatchaCake <MatchaCake@users.noreply.github.com>

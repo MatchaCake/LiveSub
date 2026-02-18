@@ -106,6 +106,9 @@ const I18N = {
     log_ip: 'IP',
     no_room_input: '无法识别房间号，请输入URL或数字',
     fill_name: '请填写名称',
+    source_text: '原文直出',
+    bot_label: '账号:',
+    no_outputs: '未配置输出',
   },
 
   en: {
@@ -204,6 +207,9 @@ const I18N = {
     log_ip: 'IP',
     no_room_input: 'Cannot parse room ID. Enter URL or number.',
     fill_name: 'Please enter a name',
+    source_text: 'Source text',
+    bot_label: 'Bot:',
+    no_outputs: 'No outputs configured',
   },
 
   ja: {
@@ -302,6 +308,9 @@ const I18N = {
     log_ip: 'IP',
     no_room_input: 'ルームIDを認識できません。URLまたは数字を入力',
     fill_name: '名前を入力してください',
+    source_text: 'ソースそのまま',
+    bot_label: 'ボット:',
+    no_outputs: '出力未設定',
   }
 };
 

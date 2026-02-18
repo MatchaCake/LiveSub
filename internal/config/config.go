@@ -9,44 +9,58 @@ import (
 )
 
 type Config struct {
-	Google   GoogleConfig   `yaml:"google"`
-	Gemini   GeminiConfig   `yaml:"gemini"`
-	Bilibili BilibiliConfig `yaml:"bilibili"`
-	Streams  []StreamConfig `yaml:"streams"`
-	WebPort  int            `yaml:"web_port"`  // control panel port (default 8899)
-	Auth     AuthConfig     `yaml:"auth"`      // web UI authentication
+	Streamer    StreamerConfig    `yaml:"streamer"`
+	STT         STTConfig         `yaml:"stt"`
+	Translation TranslationConfig `yaml:"translation"`
+	Outputs     []OutputConfig    `yaml:"outputs"`
+	Bots        []BotConfig       `yaml:"bots"`
+	Web         WebConfig         `yaml:"web"`
+}
+
+type StreamerConfig struct {
+	Name       string   `yaml:"name"`
+	RoomID     int64    `yaml:"room_id"`
+	SourceLang string   `yaml:"source_lang"` // primary STT language (e.g. "ja-JP")
+	AltLangs   []string `yaml:"alt_langs"`   // additional detection languages
+}
+
+type STTConfig struct {
+	Provider    string `yaml:"provider"`    // "google"
+	Credentials string `yaml:"credentials"` // path to service account JSON
+}
+
+type TranslationConfig struct {
+	Provider string `yaml:"provider"` // "gemini"
+	APIKey   string `yaml:"api_key"`
+	Model    string `yaml:"model"` // e.g. "gemini-2.0-flash"
+}
+
+type OutputConfig struct {
+	Name       string `yaml:"name"`
+	Platform   string `yaml:"platform"`    // "bilibili"
+	TargetLang string `yaml:"target_lang"` // empty = send source text (no translation)
+	Account    string `yaml:"account"`     // bot name reference
+	Prefix     string `yaml:"prefix"`
+	Suffix     string `yaml:"suffix"`
+}
+
+type BotConfig struct {
+	Name       string `yaml:"name"`
+	Platform   string `yaml:"platform"` // "bilibili"
+	SESSDATA   string `yaml:"sessdata"`
+	BiliJCT    string `yaml:"bili_jct"`
+	UID        int64  `yaml:"uid"`
+	DanmakuMax int    `yaml:"danmaku_max"`
+}
+
+type WebConfig struct {
+	Port int        `yaml:"port"`
+	Auth AuthConfig `yaml:"auth"`
 }
 
 type AuthConfig struct {
-	Username string `yaml:"username"` // login username
-	Password string `yaml:"password"` // login password
-}
-
-type GoogleConfig struct {
-	Credentials string   `yaml:"credentials"`   // path to service account JSON
-	STTLanguage string   `yaml:"stt_language"`   // primary language
-	AltLangs    []string `yaml:"alt_langs"`      // additional languages for auto-detection
-}
-
-type GeminiConfig struct {
-	APIKey     string `yaml:"api_key"`
-	Model      string `yaml:"model"`       // e.g. "gemini-3.0-flash"
-	TargetLang string `yaml:"target_lang"` // translate to
-}
-
-type BilibiliConfig struct {
-	SESSDATA   string `yaml:"sessdata"`
-	BiliJCT    string `yaml:"bili_jct"`    // csrf token
-	UID        int64  `yaml:"uid"`         // user id
-	DanmakuMax int    `yaml:"danmaku_max"` // max chars per danmaku (default 20, UL20+=30)
-}
-
-type StreamConfig struct {
-	Name       string   `yaml:"name"`
-	RoomID     int64    `yaml:"room_id"`
-	SourceLang string   `yaml:"source_lang"`   // primary language (optional, default auto-detect)
-	AltLangs   []string `yaml:"alt_langs"`     // additional languages e.g. ["en-US", "zh-CN"]
-	TargetLang string   `yaml:"target_lang"`   // override per-stream
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
 }
 
 func Load(path string) (*Config, error) {
@@ -56,13 +70,19 @@ func Load(path string) (*Config, error) {
 	}
 
 	cfg := &Config{
-		Gemini: GeminiConfig{
-			Model:      "gemini-3-flash-preview",
-			TargetLang: "zh-CN",
+		STT: STTConfig{
+			Provider: "google",
 		},
-		Google: GoogleConfig{
-			STTLanguage: "ja-JP",
-			AltLangs:    []string{"en-US"},
+		Translation: TranslationConfig{
+			Provider: "gemini",
+			Model:    "gemini-2.0-flash",
+		},
+		Streamer: StreamerConfig{
+			SourceLang: "ja-JP",
+			AltLangs:   []string{"en-US"},
+		},
+		Web: WebConfig{
+			Port: 8899,
 		},
 	}
 
@@ -71,26 +91,30 @@ func Load(path string) (*Config, error) {
 	}
 
 	// Resolve credentials path relative to config file directory
-	if cfg.Google.Credentials != "" && !filepath.IsAbs(cfg.Google.Credentials) {
+	if cfg.STT.Credentials != "" && !filepath.IsAbs(cfg.STT.Credentials) {
 		configDir := filepath.Dir(path)
-		cfg.Google.Credentials = filepath.Join(configDir, cfg.Google.Credentials)
+		cfg.STT.Credentials = filepath.Join(configDir, cfg.STT.Credentials)
 	}
 
 	// Set GOOGLE_APPLICATION_CREDENTIALS if not already set
-	if cfg.Google.Credentials != "" && os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
-		os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", cfg.Google.Credentials)
+	if cfg.STT.Credentials != "" && os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+		os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", cfg.STT.Credentials)
 	}
 
-	// Fill defaults for streams
-	for i := range cfg.Streams {
-		if cfg.Streams[i].SourceLang == "" {
-			cfg.Streams[i].SourceLang = cfg.Google.STTLanguage
+	// Default output platform
+	for i := range cfg.Outputs {
+		if cfg.Outputs[i].Platform == "" {
+			cfg.Outputs[i].Platform = "bilibili"
 		}
-		if len(cfg.Streams[i].AltLangs) == 0 {
-			cfg.Streams[i].AltLangs = cfg.Google.AltLangs
+	}
+
+	// Default bot settings
+	for i := range cfg.Bots {
+		if cfg.Bots[i].Platform == "" {
+			cfg.Bots[i].Platform = "bilibili"
 		}
-		if cfg.Streams[i].TargetLang == "" {
-			cfg.Streams[i].TargetLang = cfg.Gemini.TargetLang
+		if cfg.Bots[i].DanmakuMax <= 0 {
+			cfg.Bots[i].DanmakuMax = 20
 		}
 	}
 
