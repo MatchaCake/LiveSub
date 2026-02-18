@@ -525,3 +525,24 @@ time=2026-02-18T10:22:10.470+08:00 level=INFO msg="📝 translated" name="Test S
 time=2026-02-18T10:22:12.490+08:00 level=INFO msg="STT final" text=" 嬉しいし。" lang=ja-jp confidence=0.22951912879943848
 time=2026-02-18T10:22:13.632+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【谢谢你当上提督。】
 time=2026-02-18T10:22:14.366+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 嬉しいし。" dst=好开心。 lang=ja-jp
+time=2026-02-18T10:22:18.876+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【好开心。】
+time=2026-02-18T10:22:20.579+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T10:22:20.579+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T10:22:20.598+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041]
+time=2026-02-18T10:22:20.598+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T10:22:20.719+08:00 level=INFO msg="room went LIVE" room=14988041 title=正在调试
+time=2026-02-18T10:22:20.719+08:00 level=INFO msg="🎙️ room went live, starting pipeline" name="Test Stream" room=14988041 title=正在调试
+time=2026-02-18T10:22:20.803+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
+time=2026-02-18T10:22:20.803+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/316802/live_295893148_2747772.flv
+time=2026-02-18T10:22:22.798+08:00 level=INFO msg="STT final" text="それじゃあ ペロペロ 浣腸 式 よっぺらぺら 邸宅式 やってみるね。" lang=ja-jp confidence=0.8244022727012634
+time=2026-02-18T10:22:23.608+08:00 level=INFO msg="📝 translated" name="Test Stream" src="それじゃあ ペロペロ 浣腸 式 よっぺらぺら 邸宅式 やってみるね。" dst=那我们来试试舔舐、灌肠，还有豪宅式... lang=ja-jp
+time=2026-02-18T10:22:23.778+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【那我们来试试舔舐、灌肠，还有豪宅式...】
+time=2026-02-18T10:22:28.049+08:00 level=INFO msg="STT final" text=ちゃんと聞いててね。 lang=ja-jp confidence=0.5210519433021545
+time=2026-02-18T10:22:28.810+08:00 level=INFO msg="📝 translated" name="Test Stream" src=ちゃんと聞いててね。 dst=要好好听着哦。 lang=ja-jp
+time=2026-02-18T10:22:29.031+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【要好好听着哦。】
+time=2026-02-18T10:22:49.168+08:00 level=INFO msg="STT final" text=" 喉痛い？" lang=ja-jp confidence=0.23515447974205017
+time=2026-02-18T10:22:49.890+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 喉痛い？" dst=嗓子疼吗？ lang=ja-jp
+time=2026-02-18T10:22:50.100+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【嗓子疼吗？】
+time=2026-02-18T10:22:53.278+08:00 level=INFO msg="STT final" text=" お兄ちゃんちゃんと聞いてくれた？" lang=ja-jp confidence=0.8264960646629333
+time=2026-02-18T10:22:54.014+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" お兄ちゃんちゃんと聞いてくれた？" dst=哥哥听进去了吗？ lang=ja-jp
+time=2026-02-18T10:22:55.373+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【哥哥听进去了吗？】

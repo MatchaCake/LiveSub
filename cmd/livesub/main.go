@@ -79,8 +79,12 @@ func run(cfgPath string) error {
 	}
 	defer translator.Close()
 
-	// Shared translation worker pool
-	pool := newTranslatePool(ctx, translator, 3)
+	// Shared translation worker pool (3 workers per stream)
+	poolSize := len(cfg.Streams) * 3
+	if poolSize < 3 {
+		poolSize = 3
+	}
+	pool := newTranslatePool(ctx, translator, poolSize)
 	defer pool.close()
 
 	// Build room → stream config mapping
