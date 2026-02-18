@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -40,11 +41,18 @@ func NewLogger(dir string, roomID int64, name string) (*Logger, error) {
 	}
 
 	// Write UTF-8 BOM for Excel compatibility
-	f.Write([]byte{0xEF, 0xBB, 0xBF})
+	if _, err := f.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("write BOM: %w", err)
+	}
 
 	w := csv.NewWriter(f)
 	w.Write([]string{"时间", "原文", "翻译"})
 	w.Flush()
+	if err := w.Error(); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("write header: %w", err)
+	}
 
 	return &Logger{
 		dir:     dir,
@@ -140,7 +148,7 @@ func ListFilesForRoom(dir string, roomID int64) ([]FileInfo, error) {
 	prefix := fmt.Sprintf("%d_", roomID)
 	var filtered []FileInfo
 	for _, f := range all {
-		if len(f.Name) > len(prefix) && f.Name[:len(prefix)] == prefix {
+		if strings.HasPrefix(f.Name, prefix) {
 			filtered = append(filtered, f)
 		}
 	}

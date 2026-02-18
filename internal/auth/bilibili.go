@@ -104,7 +104,9 @@ func (s *Store) ListBiliAccounts() ([]BiliAccount, error) {
 	var accounts []BiliAccount
 	for rows.Next() {
 		var a BiliAccount
-		rows.Scan(&a.ID, &a.Name, &a.SESSDATA, &a.BiliJCT, &a.UID, &a.DanmakuMax, &a.CreatedAt, &a.ExpiresAt, &a.Valid)
+		if err := rows.Scan(&a.ID, &a.Name, &a.SESSDATA, &a.BiliJCT, &a.UID, &a.DanmakuMax, &a.CreatedAt, &a.ExpiresAt, &a.Valid); err != nil {
+			return nil, err
+		}
 		accounts = append(accounts, a)
 	}
 	return accounts, nil
@@ -121,7 +123,9 @@ func (s *Store) ListBiliAccountSummaries() ([]BiliAccountSummary, error) {
 	var accounts []BiliAccountSummary
 	for rows.Next() {
 		var a BiliAccountSummary
-		rows.Scan(&a.ID, &a.Name, &a.UID, &a.DanmakuMax, &a.CreatedAt, &a.ExpiresAt, &a.Valid)
+		if err := rows.Scan(&a.ID, &a.Name, &a.UID, &a.DanmakuMax, &a.CreatedAt, &a.ExpiresAt, &a.Valid); err != nil {
+			return nil, err
+		}
 		accounts = append(accounts, a)
 	}
 	return accounts, nil
