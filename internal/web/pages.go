@@ -251,6 +251,22 @@ const adminHTML = `<!DOCTYPE html>
   <button class="add-btn" onclick="addUser()">添加</button>
 </div>
 
+<div class="section">
+  <h2>📋 操作记录</h2>
+  <div style="margin-bottom:10px;">
+    <button class="small-btn" onclick="loadAudit()" id="auditBtn">加载记录</button>
+    <select id="auditLimit" style="padding:5px 8px;border:1px solid #333;border-radius:4px;background:#0f3460;color:#eee;font-size:12px;">
+      <option value="50">最近50条</option>
+      <option value="100" selected>最近100条</option>
+      <option value="500">最近500条</option>
+    </select>
+  </div>
+  <table id="auditTable" style="display:none;">
+    <thead><tr><th>时间</th><th>用户</th><th>操作</th><th>详情</th><th>IP</th></tr></thead>
+    <tbody id="auditBody"></tbody>
+  </table>
+</div>
+
 <script>
 let allRooms = [];
 let allAccounts = [];
@@ -371,6 +387,18 @@ async function deleteUser(id, name) {
   if (!confirm('确定删除用户 ' + name + '?')) return;
   await fetch('/api/admin/user?id=' + id, {method: 'DELETE'});
   loadUsers();
+}
+
+async function loadAudit() {
+  const limit = document.getElementById('auditLimit').value;
+  const res = await fetch('/api/admin/audit?limit=' + limit);
+  const entries = await res.json() || [];
+  const table = document.getElementById('auditTable');
+  const body = document.getElementById('auditBody');
+  table.style.display = '';
+  body.innerHTML = entries.map(e =>
+    '<tr><td style="white-space:nowrap;font-size:12px;">' + e.time + '</td><td>' + e.username + '</td><td>' + e.action + '</td><td style="font-size:12px;color:#aaa;">' + (e.detail||'') + '</td><td style="font-size:12px;color:#666;">' + (e.ip||'') + '</td></tr>'
+  ).join('') || '<tr><td colspan="5" style="text-align:center;color:#666;">暂无记录</td></tr>';
 }
 
 init();
