@@ -369,10 +369,10 @@ const adminHTML = `<!DOCTYPE html>
       <input type="text" id="sName" placeholder="主播名称">
       <input type="number" id="sRoom" placeholder="房间号" style="width:120px;">
       <select id="sLang">
-        <option value="ja-JP">日本語 (ja)</option>
-        <option value="zh">中文 (zh)</option>
-        <option value="en-US">English (en)</option>
-        <option value="ko-KR">한국어 (ko)</option>
+        <option value="ja-JP">日本語 (ja-JP)</option>
+        <option value="zh-CN">中文 (zh-CN)</option>
+        <option value="en-US">English (en-US)</option>
+        <option value="ko-KR">한국어 (ko-KR)</option>
         <option value="fr-FR">Français (fr)</option>
         <option value="de-DE">Deutsch (de)</option>
         <option value="es-ES">Español (es)</option>
@@ -401,22 +401,22 @@ const adminHTML = `<!DOCTYPE html>
       </select>
       <select id="outLang">
         <option value="">(原文直传)</option>
-        <option value="zh">中文 (zh)</option>
-        <option value="en">English (en)</option>
-        <option value="ja">日本語 (ja)</option>
-        <option value="ko">한국어 (ko)</option>
-        <option value="fr">Français (fr)</option>
-        <option value="de">Deutsch (de)</option>
-        <option value="es">Español (es)</option>
-        <option value="ru">Русский (ru)</option>
+        <option value="zh-CN">中文 (zh-CN)</option>
+        <option value="en-US">English (en-US)</option>
+        <option value="ja-JP">日本語 (ja-JP)</option>
+        <option value="ko-KR">한국어 (ko-KR)</option>
+        <option value="fr-FR">Français (fr-FR)</option>
+        <option value="de-DE">Deutsch (de-DE)</option>
+        <option value="es-ES">Español (es-ES)</option>
+        <option value="ru-RU">Русский (ru-RU)</option>
       </select>
       <select id="outAccount">
       </select>
     </div>
     <div class="form-row">
       <input type="number" id="outRoom" placeholder="房间号 (0=默认)" style="width:120px;">
-      <input type="text" id="outPrefix" placeholder="前缀" style="width:100px;">
-      <input type="text" id="outSuffix" placeholder="后缀" style="width:100px;">
+      <input type="text" id="outPrefix" placeholder="前缀" value="【" style="width:100px;">
+      <input type="text" id="outSuffix" placeholder="后缀" value="】" style="width:100px;">
       <button class="add-btn" onclick="saveOutput()">保存</button>
     </div>
   </div>
@@ -785,8 +785,8 @@ function clearOutputForm() {
   document.getElementById('outLang').selectedIndex = 0;
   document.getElementById('outAccount').selectedIndex = 0;
   document.getElementById('outRoom').value = '';
-  document.getElementById('outPrefix').value = '';
-  document.getElementById('outSuffix').value = '';
+  document.getElementById('outPrefix').value = '【';
+  document.getElementById('outSuffix').value = '】';
 }
 
 // --- User Management ---
@@ -1048,21 +1048,21 @@ const settingsHTML = `<!DOCTYPE html>
       <select id="outPlatform"><option value="bilibili">bilibili</option></select>
       <select id="outLang">
         <option value="">(原文直传)</option>
-        <option value="zh">中文 (zh)</option>
-        <option value="en">English (en)</option>
-        <option value="ja">日本語 (ja)</option>
-        <option value="ko">한국어 (ko)</option>
-        <option value="fr">Français (fr)</option>
-        <option value="de">Deutsch (de)</option>
-        <option value="es">Español (es)</option>
-        <option value="ru">Русский (ru)</option>
+        <option value="zh-CN">中文 (zh-CN)</option>
+        <option value="en-US">English (en-US)</option>
+        <option value="ja-JP">日本語 (ja-JP)</option>
+        <option value="ko-KR">한국어 (ko-KR)</option>
+        <option value="fr-FR">Français (fr-FR)</option>
+        <option value="de-DE">Deutsch (de-DE)</option>
+        <option value="es-ES">Español (es-ES)</option>
+        <option value="ru-RU">Русский (ru-RU)</option>
       </select>
       <select id="outAccount"></select>
     </div>
     <div class="form-row">
       <input type="number" id="outRoom" placeholder="房间号 (0=默认)" style="width:120px;">
-      <input type="text" id="outPrefix" placeholder="前缀" style="width:100px;">
-      <input type="text" id="outSuffix" placeholder="后缀" style="width:100px;">
+      <input type="text" id="outPrefix" placeholder="前缀" value="【" style="width:100px;">
+      <input type="text" id="outSuffix" placeholder="后缀" value="】" style="width:100px;">
       <button class="add-btn" onclick="saveOutput()">保存</button>
     </div>
   </div>
@@ -1225,8 +1225,8 @@ function clearForm() {
   document.getElementById('outLang').selectedIndex = 0;
   document.getElementById('outAccount').selectedIndex = 0;
   document.getElementById('outRoom').value = '';
-  document.getElementById('outPrefix').value = '';
-  document.getElementById('outSuffix').value = '';
+  document.getElementById('outPrefix').value = '【';
+  document.getElementById('outSuffix').value = '】';
 }
 
 init();
