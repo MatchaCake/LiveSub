@@ -71,20 +71,6 @@ func (s *BilibiliSender) addAccountLocked(a Account) {
 	s.senders = append(s.senders, s.buildSender(a))
 }
 
-// AddAccount appends an account (deduplicates by name).
-func (s *BilibiliSender) AddAccount(a Account) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for i, existing := range s.accounts {
-		if existing.Name == a.Name {
-			s.accounts[i] = a
-			s.senders[i] = s.buildSender(a)
-			return
-		}
-	}
-	s.addAccountLocked(a)
-}
-
 // SetAccounts replaces all accounts.
 func (s *BilibiliSender) SetAccounts(accounts []Account) {
 	s.mu.Lock()
