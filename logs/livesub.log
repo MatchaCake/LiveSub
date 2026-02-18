@@ -653,3 +653,31 @@ time=2026-02-18T10:30:46.146+08:00 level=INFO msg="danmaku sent" room=14988041 m
 time=2026-02-18T10:30:51.326+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【想看到蓝天，直到头脑一片空白。】
 time=2026-02-18T10:30:52.196+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" 胸が痛んでも嘘がつけるのは何で なんでしょうか？悪い人ばかりが得。" dst="为什么心痛了还能说谎呢？ 为什么总是坏人得利。" lang=ja-jp
 time=2026-02-18T10:30:56.538+08:00 level=INFO msg="danmaku sent" room=14988041 msg="【为什么心痛了还能说谎呢？ 为什么总是坏人得利。】"
+time=2026-02-18T10:31:17.971+08:00 level=INFO msg="STT final" text="しているのは 何で なんでしょうか？幸せの文字がお金を向けるものは泣いて何でしょうか？一つ線を受けなければ、辛さになるのはわざと なんでしょうか？青春って目が背中になられていて、ヒッチ 僕みたいのサスペンス 高岡 期待していた先生 どうでもいいんですよ。生きてるだけでいたいですよ。書かないんだ ただ。" lang=ja-jp confidence=0.6342571377754211
+time=2026-02-18T10:31:18.476+08:00 level=ERROR msg="translate error" name="Test Stream" err="gemini translate: Error 429, Message: Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details., Status: RESOURCE_EXHAUSTED, Details: []"
+time=2026-02-18T10:31:19.130+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T10:31:19.130+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T10:31:19.144+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041]
+time=2026-02-18T10:31:19.144+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T10:31:19.254+08:00 level=INFO msg="room went LIVE" room=14988041 title=正在调试
+time=2026-02-18T10:31:19.254+08:00 level=INFO msg="🎙️ room went live, starting pipeline" name="Test Stream" room=14988041 title=正在调试
+time=2026-02-18T10:31:19.338+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
+time=2026-02-18T10:31:19.338+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/553822/live_295893148_2747772.flv
+time=2026-02-18T10:31:59.816+08:00 level=INFO msg="STT final" text="何度も この穴の埋め方は書かないんだ。ただ、夏の匂いに目を詰めて、雲の高さを指で囲う 思い出だけが見たいのはわがままですか？売れるじゃないですか？鼻の血肉は結ばれる 着込んでも嫌になりました。先生の夢は何だったんですか？大人になると忘れちゃうもんなんですか？" lang=ja-jp confidence=0.5853988528251648
+time=2026-02-18T10:32:01.335+08:00 level=INFO msg="📝 translated" name="Test Stream" src="何度も この穴の埋め方は書かないんだ。ただ、夏の匂いに目を詰めて、雲の高さを指で囲う 思い出だけが見たいのはわがままですか？売れるじゃないですか？鼻の血肉は結ばれる 着込んでも嫌になりました。先生の夢は何だったんですか？大人になると忘れちゃうもんなんですか？" dst=这个坑怎么填，我不想再写了。只想装满夏天的味道，用手指圈住云的高度，只留下回忆，这样要求过分吗？能卖钱的吧？鼻子和血肉都连在一起了，穿再多也觉得烦。老师，你的梦想是什么？长大后都会忘记吗？ lang=ja-jp
+time=2026-02-18T10:32:01.604+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【这个坑怎么填，我不想再写了。只想装满夏天的味道，用手指圈】
+time=2026-02-18T10:32:06.811+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【住云的高度，只留下回忆，这样要求过分吗？能卖钱的吧？鼻子】
+time=2026-02-18T10:32:12.071+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【和血肉都连在一起了，穿再多也觉得烦。老师，你的梦想是什么】
+time=2026-02-18T10:32:17.325+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【？长大后都会忘记吗？】
+time=2026-02-18T10:32:31.540+08:00 level=INFO msg="STT final" text="天平 人生 そうだね。この先もあれだけでさ。涙がひとつ 強くするなんて全部 詭弁でした。殺されたって どうでもいいわけなんて。現実は手が落ちなくて夏が遠くて、これでも本当にいいんですか？このまま生きてもいいんですか？そのまま君にしかわからないよね。いられました。ただ。" lang=ja-jp confidence=0.3843713104724884
+time=2026-02-18T10:32:34.292+08:00 level=INFO msg="📝 translated" name="Test Stream" src="天平 人生 そうだね。この先もあれだけでさ。涙がひとつ 強くするなんて全部 詭弁でした。殺されたって どうでもいいわけなんて。現実は手が落ちなくて夏が遠くて、これでも本当にいいんですか？このまま生きてもいいんですか？そのまま君にしかわからないよね。いられました。ただ。" dst=天平人生，是啊。以后也只能那样了。什么眼泪会让人变得更坚强，全是诡辩。被杀了也无所谓什么的。现实是手放不下，夏天也遥遥无期，这样真的可以吗？就这样活下去可以吗？果然只有你才知道答案吧。我能待在这里，仅仅是因为。 lang=ja-jp
+time=2026-02-18T10:32:34.567+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【天平人生，是啊。以后也只能那样了。什么眼泪会让人变得更坚】
+time=2026-02-18T10:32:39.732+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【强，全是诡辩。被杀了也无所谓什么的。现实是手放不下，夏天】
+time=2026-02-18T10:32:41.697+08:00 level=INFO msg="STT final" text="いつまでも 風に吹かれたい。青空だけが 向かいのは頭まで。" lang=ja-jp confidence=0.7623416781425476
+time=2026-02-18T10:32:44.905+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【也遥遥无期，这样真的可以吗？就这样活下去可以吗？果然只有】
+time=2026-02-18T10:32:50.150+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【你才知道答案吧。我能待在这里，仅仅是因为。】
+time=2026-02-18T10:32:50.150+08:00 level=INFO msg="STT final" text=" さ、あなただけを知りたいの わがままですか？" lang=ja-jp confidence=0.6357640027999878
+time=2026-02-18T10:32:51.017+08:00 level=INFO msg="📝 translated" name="Test Stream" src="いつまでも 風に吹かれたい。青空だけが 向かいのは頭まで。" dst=想一直被风吹拂，眼中只有蓝天。 lang=ja-jp
+time=2026-02-18T10:32:55.366+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【想一直被风吹拂，眼中只有蓝天。】
+time=2026-02-18T10:32:56.618+08:00 level=INFO msg="📝 translated" name="Test Stream" src=" さ、あなただけを知りたいの わがままですか？" dst=我只想了解你，过分吗？ lang=ja-jp
+time=2026-02-18T10:33:00.602+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【我只想了解你，过分吗？】
