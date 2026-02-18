@@ -180,6 +180,7 @@ type Server struct {
 	store           *auth.Store
 	sessions        sync.Map // token → session
 	onAccountChange func()   // called when bili accounts change
+	onStreamChange  func()   // called when streams added/removed
 	transcriptDir   string   // directory for transcript CSVs
 }
 
@@ -195,6 +196,11 @@ func NewServer(rc *RoomControl, port int, store *auth.Store, transcriptDir strin
 // OnAccountChange registers a callback when bilibili accounts change.
 func (s *Server) OnAccountChange(fn func()) {
 	s.onAccountChange = fn
+}
+
+// OnStreamChange registers a callback when streams are added/removed.
+func (s *Server) OnStreamChange(fn func()) {
+	s.onStreamChange = fn
 }
 
 func (s *Server) Start() {
@@ -221,6 +227,8 @@ func (s *Server) Start() {
 	mux.HandleFunc("/api/admin/all-rooms", s.requireAdmin(s.handleAdminAllRooms))
 	mux.HandleFunc("/api/admin/all-accounts", s.requireAdmin(s.handleAdminAllAccounts))
 	mux.HandleFunc("/api/admin/audit", s.requireAdmin(s.handleAdminAudit))
+	mux.HandleFunc("/api/admin/streams", s.requireAdmin(s.handleAdminStreams))
+	mux.HandleFunc("/api/admin/stream", s.requireAdmin(s.handleAdminStream))
 	mux.HandleFunc("/api/admin/bili-accounts", s.requireAdmin(s.handleBiliAccounts))
 	mux.HandleFunc("/api/admin/bili-account", s.requireAdmin(s.handleBiliAccount))
 	mux.HandleFunc("/api/admin/bili-qr/generate", s.requireAdmin(s.handleBiliQRGenerate))
@@ -675,6 +683,62 @@ func (s *Server) handleTranscriptDownload(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	http.ServeFile(w, r, path)
+}
+
+// --- Stream Management ---
+
+func (s *Server) handleAdminStreams(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	streams, err := s.store.ListStreams()
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, 500)
+		return
+	}
+	if streams == nil {
+		streams = []auth.StreamInfo{}
+	}
+	json.NewEncoder(w).Encode(streams)
+}
+
+func (s *Server) handleAdminStream(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case "POST":
+		var req struct {
+			Name       string `json:"name"`
+			RoomID     int64  `json:"room_id"`
+			SourceLang string `json:"source_lang"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		if req.Name == "" || req.RoomID == 0 {
+			http.Error(w, `{"error":"name and room_id required"}`, 400)
+			return
+		}
+		si, err := s.store.AddStream(req.Name, req.RoomID, req.SourceLang)
+		if err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, 400)
+			return
+		}
+		s.audit(r, "添加直播间", fmt.Sprintf("%s (#%d)", req.Name, req.RoomID))
+		if s.onStreamChange != nil {
+			s.onStreamChange()
+		}
+		json.NewEncoder(w).Encode(si)
+
+	case "DELETE":
+		idStr := r.URL.Query().Get("id")
+		id, _ := strconv.ParseInt(idStr, 10, 64)
+		s.store.DeleteStream(id)
+		s.audit(r, "删除直播间", fmt.Sprintf("ID=%d", id))
+		if s.onStreamChange != nil {
+			s.onStreamChange()
+		}
+		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+
+	default:
+		http.Error(w, "method not allowed", 405)
+	}
 }
 
 // --- Bilibili Account Management ---

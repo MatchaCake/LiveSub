@@ -254,6 +254,28 @@ const adminHTML = `<!DOCTYPE html>
 </div>
 
 <div class="section">
+  <h2>📺 直播间管理</h2>
+  <table>
+    <thead><tr><th>名称</th><th>房间号</th><th>语言</th><th>添加时间</th><th>操作</th></tr></thead>
+    <tbody id="streamsBody"></tbody>
+  </table>
+  <div style="margin-top:15px;">
+    <div id="streamMsg" class="msg"></div>
+    <div class="form-row">
+      <input type="text" id="newStreamName" placeholder="名称 (如: 向日葵)">
+      <input type="text" id="newStreamURL" placeholder="直播间URL或房间号">
+      <select id="newStreamLang" style="padding:8px 12px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:14px;">
+        <option value="ja-JP">日语 (ja-JP)</option>
+        <option value="en-US">英语 (en-US)</option>
+        <option value="ko-KR">韩语 (ko-KR)</option>
+        <option value="zh-CN">中文 (zh-CN)</option>
+      </select>
+      <button class="add-btn" onclick="addStream()">添加直播间</button>
+    </div>
+  </div>
+</div>
+
+<div class="section">
   <h2>👥 用户列表</h2>
   <table id="usersTable">
     <thead><tr><th>用户名</th><th>角色</th><th>直播间</th><th>B站账号</th><th>操作</th></tr></thead>
@@ -328,6 +350,7 @@ async function init() {
   renderCheckboxes();
   loadUsers();
   loadBiliAccounts();
+  loadStreams();
 }
 
 function renderCheckboxes() {
@@ -435,6 +458,70 @@ async function deleteUser(id, name) {
   if (!confirm('确定删除用户 ' + name + '?')) return;
   await fetch('/api/admin/user?id=' + id, {method: 'DELETE'});
   loadUsers();
+}
+
+// --- Streams ---
+
+async function loadStreams() {
+  const res = await fetch('/api/admin/streams');
+  const streams = await res.json() || [];
+  const body = document.getElementById('streamsBody');
+  body.innerHTML = streams.map(s =>
+    '<tr>' +
+    '<td>' + s.name + '</td>' +
+    '<td><a href="https://live.bilibili.com/' + s.room_id + '" target="_blank" style="color:#4ecca3;">' + s.room_id + '</a></td>' +
+    '<td style="font-size:12px;color:#aaa;">' + s.source_lang + '</td>' +
+    '<td style="font-size:12px;color:#aaa;">' + (s.created_at||'') + '</td>' +
+    '<td><button class="small-btn danger" onclick="deleteStream(' + s.id + ',\'' + s.name.replace(/'/g,"\\'") + '\')">删除</button></td>' +
+    '</tr>'
+  ).join('') || '<tr><td colspan="5" style="text-align:center;color:#666;">暂无 (仅显示通过WebUI添加的直播间)</td></tr>';
+}
+
+function extractRoomID(input) {
+  input = input.trim();
+  // Pure number
+  if (/^\d+$/.test(input)) return parseInt(input);
+  // URL like https://live.bilibili.com/22959964?...
+  const m = input.match(/live\.bilibili\.com\/(\d+)/);
+  return m ? parseInt(m[1]) : 0;
+}
+
+async function addStream() {
+  const name = document.getElementById('newStreamName').value.trim();
+  const urlInput = document.getElementById('newStreamURL').value.trim();
+  const lang = document.getElementById('newStreamLang').value;
+  const msgEl = document.getElementById('streamMsg');
+
+  if (!name) { msgEl.className='msg err'; msgEl.textContent='请填写名称'; return; }
+
+  const roomID = extractRoomID(urlInput);
+  if (!roomID) { msgEl.className='msg err'; msgEl.textContent='无法识别房间号，请输入URL或数字'; return; }
+
+  const res = await fetch('/api/admin/stream', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, room_id: roomID, source_lang: lang})
+  });
+
+  if (res.ok) {
+    msgEl.className='msg ok'; msgEl.textContent='已添加: ' + name + ' (#' + roomID + ')';
+    document.getElementById('newStreamName').value = '';
+    document.getElementById('newStreamURL').value = '';
+    loadStreams();
+    // Also refresh room checkboxes for user assignment
+    const [roomsRes] = await Promise.all([fetch('/api/admin/all-rooms')]);
+    allRooms = await roomsRes.json() || [];
+    renderCheckboxes();
+  } else {
+    const data = await res.json();
+    msgEl.className='msg err'; msgEl.textContent=data.error||'添加失败';
+  }
+}
+
+async function deleteStream(id, name) {
+  if (!confirm('确定删除直播间 ' + name + '?\\n正在进行的翻译会停止')) return;
+  await fetch('/api/admin/stream?id=' + id, {method: 'DELETE'});
+  loadStreams();
 }
 
 // --- Bilibili accounts ---

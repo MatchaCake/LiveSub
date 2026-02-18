@@ -96,16 +96,7 @@ func run(cfgPath string) error {
 	// Room control (pause/resume per room)
 	rc := web.NewRoomControl()
 
-	// Build room → stream config mapping
-	streamMap := make(map[int64]config.StreamConfig)
-	roomIDs := make([]int64, 0, len(cfg.Streams))
-	for _, sc := range cfg.Streams {
-		streamMap[sc.RoomID] = sc
-		roomIDs = append(roomIDs, sc.RoomID)
-		rc.Register(sc.RoomID, sc.Name)
-	}
-
-	// Init SQLite auth store
+	// Init SQLite auth store (before building stream map, since DB streams need it)
 	dbPath := filepath.Join(filepath.Dir(cfgPath), "users.db")
 	authStore, err := auth.NewStore(dbPath)
 	if err != nil {
@@ -118,6 +109,42 @@ func run(cfgPath string) error {
 		if err := authStore.EnsureAdmin(cfg.Auth.Username, cfg.Auth.Password); err != nil {
 			slog.Error("ensure admin failed", "err", err)
 		}
+	}
+
+	// Build room → stream config mapping (config + DB)
+	mergeStreams := func() map[int64]config.StreamConfig {
+		currentCfg := hotCfg.Get()
+		merged := make(map[int64]config.StreamConfig)
+		for _, sc := range currentCfg.Streams {
+			merged[sc.RoomID] = sc
+		}
+		// DB streams (override config if same room_id)
+		if dbStreams, err := authStore.ListStreams(); err == nil {
+			for _, ds := range dbStreams {
+				if _, exists := merged[ds.RoomID]; !exists {
+					sc := config.StreamConfig{
+						Name:       ds.Name,
+						RoomID:     ds.RoomID,
+						SourceLang: ds.SourceLang,
+						TargetLang: ds.TargetLang,
+					}
+					// Fill defaults
+					if sc.SourceLang == "" {
+						sc.SourceLang = currentCfg.Google.STTLanguage
+					}
+					if sc.TargetLang == "" {
+						sc.TargetLang = currentCfg.Gemini.TargetLang
+					}
+					merged[sc.RoomID] = sc
+				}
+			}
+		}
+		return merged
+	}
+
+	streamMap := mergeStreams()
+	for _, sc := range streamMap {
+		rc.Register(sc.RoomID, sc.Name)
 	}
 
 	// Start web control panel
@@ -164,7 +191,6 @@ func run(cfgPath string) error {
 		slog.Info("synced bili accounts to senders", "count", len(accounts))
 	}
 
-	webServer.OnAccountChange(syncAccountsToSenders)
 	webServer.Start()
 
 	// Monitor live status
@@ -175,6 +201,43 @@ func run(cfgPath string) error {
 	var mu sync.Mutex
 	active := make(map[int64]*activeStream)
 
+	// Register callbacks that need mu/active/mon/events
+	webServer.OnAccountChange(syncAccountsToSenders)
+	webServer.OnStreamChange(func() {
+		newStreamMap := mergeStreams()
+
+		mu.Lock()
+		var removedIDs []int64
+		for id := range streamMap {
+			if _, exists := newStreamMap[id]; !exists {
+				removedIDs = append(removedIDs, id)
+				if as, running := active[id]; running {
+					slog.Info("🔄 stopping removed stream (DB)", "room", id)
+					as.cancel()
+					delete(active, id)
+				}
+				rc.Unregister(id)
+			}
+		}
+		var addedIDs []int64
+		for id, sc := range newStreamMap {
+			if _, exists := streamMap[id]; !exists {
+				addedIDs = append(addedIDs, id)
+				rc.Register(id, sc.Name)
+			}
+		}
+		streamMap = newStreamMap
+		mu.Unlock()
+
+		if len(removedIDs) > 0 {
+			mon.RemoveRooms(removedIDs, events)
+		}
+		if len(addedIDs) > 0 {
+			mon.AddRooms(addedIDs)
+		}
+		slog.Info("🔄 streams updated (DB)", "total", len(newStreamMap), "added", len(addedIDs), "removed", len(removedIDs))
+	})
+
 	// Hot reload config
 	hotCfg.OnReload(func(newCfg *config.Config) {
 		// Update admin credentials from config
@@ -182,13 +245,9 @@ func run(cfgPath string) error {
 			authStore.EnsureAdmin(newCfg.Auth.Username, newCfg.Auth.Password)
 		}
 
-		// Build new room set
-		newRoomSet := make(map[int64]config.StreamConfig)
-		for _, sc := range newCfg.Streams {
-			newRoomSet[sc.RoomID] = sc
-		}
+		// Reuse stream change logic (config + DB merged)
+		newRoomSet := mergeStreams()
 
-		// Find removed rooms → stop active streams + unregister
 		mu.Lock()
 		var removedIDs []int64
 		for id := range streamMap {
@@ -202,8 +261,6 @@ func run(cfgPath string) error {
 				rc.Unregister(id)
 			}
 		}
-
-		// Find added rooms → register
 		var addedIDs []int64
 		for id, sc := range newRoomSet {
 			if _, exists := streamMap[id]; !exists {
@@ -211,12 +268,9 @@ func run(cfgPath string) error {
 				rc.Register(id, sc.Name)
 			}
 		}
-
-		// Update streamMap
 		streamMap = newRoomSet
 		mu.Unlock()
 
-		// Update monitor
 		if len(removedIDs) > 0 {
 			mon.RemoveRooms(removedIDs, events)
 		}
@@ -224,11 +278,10 @@ func run(cfgPath string) error {
 			mon.AddRooms(addedIDs)
 		}
 
-		// Sync all accounts (config + DB) to senders
 		syncAccountsToSenders()
 
-		slog.Info("🔄 streams reloaded",
-			"total", len(newCfg.Streams),
+		slog.Info("🔄 config reloaded",
+			"total", len(newRoomSet),
 			"added", len(addedIDs),
 			"removed", len(removedIDs),
 		)
@@ -280,8 +333,13 @@ func run(cfgPath string) error {
 		}
 	}()
 
+	roomIDs := make([]int64, 0, len(streamMap))
+	for id := range streamMap {
+		roomIDs = append(roomIDs, id)
+	}
+
 	webURL := fmt.Sprintf("http://localhost:%d", webPort)
-	slog.Info("livesub started", "streams", len(cfg.Streams), "rooms", roomIDs, "web", webURL)
+	slog.Info("livesub started", "streams", len(streamMap), "rooms", roomIDs, "web", webURL)
 
 	// Auto-open browser
 	openBrowser(webURL)
