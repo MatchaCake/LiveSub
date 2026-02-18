@@ -54,7 +54,7 @@ func Load(path string) (*Config, error) {
 		},
 		Google: GoogleConfig{
 			STTLanguage: "ja-JP",
-			AltLangs:    []string{"en-US", "zh"},
+			AltLangs:    []string{"en-US"},
 		},
 	}
 
