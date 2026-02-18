@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/christian-lee/livesub/internal/auth"
 	"github.com/christian-lee/livesub/internal/danmaku"
 )
 
@@ -22,8 +23,8 @@ type RoomState struct {
 	Live           bool     `json:"live"`
 	Paused         bool     `json:"paused"`
 	STTText        string   `json:"stt_text"`
-	Accounts       []string `json:"accounts"`        // available account names
-	CurrentAccount int      `json:"current_account"`  // index of active account
+	Accounts       []string `json:"accounts"`
+	CurrentAccount int      `json:"current_account"`
 }
 
 // RoomControl manages per-room pause/resume state
@@ -40,14 +41,12 @@ func NewRoomControl() *RoomControl {
 	}
 }
 
-// SetSender associates a danmaku sender with a room.
 func (rc *RoomControl) SetSender(roomID int64, sender *danmaku.BilibiliSender) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	rc.senders[roomID] = sender
 }
 
-// GetSender returns the sender for a room.
 func (rc *RoomControl) GetSender(roomID int64) *danmaku.BilibiliSender {
 	rc.mu.RLock()
 	defer rc.mu.RUnlock()
@@ -119,59 +118,94 @@ func (rc *RoomControl) GetAll() []RoomState {
 	return states
 }
 
-// Server serves the control panel with authentication
+// GetFiltered returns rooms filtered by allowed room IDs and accounts.
+func (rc *RoomControl) GetFiltered(roomIDs []int64, accountNames []string) []RoomState {
+	all := rc.GetAll()
+	roomSet := make(map[int64]bool)
+	for _, id := range roomIDs {
+		roomSet[id] = true
+	}
+	acctSet := make(map[string]bool)
+	for _, n := range accountNames {
+		acctSet[n] = true
+	}
+
+	var filtered []RoomState
+	for _, r := range all {
+		if !roomSet[r.RoomID] {
+			continue
+		}
+		// Filter accounts to only allowed ones
+		var visibleAccounts []string
+		newCurrent := 0
+		for _, a := range r.Accounts {
+			if acctSet[a] {
+				visibleAccounts = append(visibleAccounts, a)
+			}
+		}
+		// Adjust current account index
+		if len(visibleAccounts) > 0 {
+			currentName := ""
+			if r.CurrentAccount < len(r.Accounts) {
+				currentName = r.Accounts[r.CurrentAccount]
+			}
+			for i, a := range visibleAccounts {
+				if a == currentName {
+					newCurrent = i
+					break
+				}
+			}
+		}
+		r.Accounts = visibleAccounts
+		r.CurrentAccount = newCurrent
+		filtered = append(filtered, r)
+	}
+	return filtered
+}
+
+// session stores user info
+type session struct {
+	UserID int64
+	Expiry time.Time
+}
+
+// Server serves the control panel with SQLite-based authentication
 type Server struct {
 	rc       *RoomControl
 	port     int
-	mu       sync.RWMutex
-	username string
-	password string
-	sessions sync.Map // token → expiry time
+	store    *auth.Store
+	sessions sync.Map // token → session
 }
 
-func NewServer(rc *RoomControl, port int, username, password string) *Server {
+func NewServer(rc *RoomControl, port int, store *auth.Store) *Server {
 	return &Server{
-		rc:       rc,
-		port:     port,
-		username: username,
-		password: password,
+		rc:    rc,
+		port:  port,
+		store: store,
 	}
-}
-
-// UpdateAuth updates credentials (hot reload)
-func (s *Server) UpdateAuth(username, password string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.username = username
-	s.password = password
-	slog.Info("auth credentials updated")
 }
 
 func (s *Server) Start() {
 	mux := http.NewServeMux()
 
-	s.mu.RLock()
-	hasAuth := s.username != "" && s.password != ""
-	s.mu.RUnlock()
+	// Public
+	mux.HandleFunc("/login", s.handleLoginPage)
+	mux.HandleFunc("/api/login", s.handleLogin)
+	mux.HandleFunc("/api/logout", s.handleLogout)
 
-	if hasAuth {
-		// Auth enabled
-		mux.HandleFunc("/login", s.handleLoginPage)
-		mux.HandleFunc("/api/login", s.handleLogin)
-		mux.HandleFunc("/api/logout", s.handleLogout)
-		mux.HandleFunc("/", s.requireAuth(s.handleIndex))
-		mux.HandleFunc("/api/rooms", s.requireAuth(s.handleRooms))
-		mux.HandleFunc("/api/toggle", s.requireAuth(s.handleToggle))
-		mux.HandleFunc("/api/account", s.requireAuth(s.handleSwitchAccount))
-		slog.Info("web auth enabled", "username", s.username)
-	} else {
-		// No auth
-		mux.HandleFunc("/", s.handleIndex)
-		mux.HandleFunc("/api/rooms", s.handleRooms)
-		mux.HandleFunc("/api/toggle", s.handleToggle)
-		mux.HandleFunc("/api/account", s.handleSwitchAccount)
-		slog.Info("web auth disabled (no username/password configured)")
-	}
+	// Authenticated
+	mux.HandleFunc("/", s.requireAuth(s.handleIndex))
+	mux.HandleFunc("/api/rooms", s.requireAuth(s.handleRooms))
+	mux.HandleFunc("/api/toggle", s.requireAuth(s.handleToggle))
+	mux.HandleFunc("/api/account", s.requireAuth(s.handleSwitchAccount))
+	mux.HandleFunc("/api/me", s.requireAuth(s.handleMe))
+
+	// Admin only
+	mux.HandleFunc("/admin", s.requireAdmin(s.handleAdminPage))
+	mux.HandleFunc("/api/admin/users", s.requireAdmin(s.handleAdminUsers))
+	mux.HandleFunc("/api/admin/user", s.requireAdmin(s.handleAdminUser))
+	mux.HandleFunc("/api/admin/all-rooms", s.requireAdmin(s.handleAdminAllRooms))
+	mux.HandleFunc("/api/admin/all-accounts", s.requireAdmin(s.handleAdminAllAccounts))
 
 	addr := fmt.Sprintf(":%d", s.port)
 	slog.Info("web control panel started", "addr", addr)
@@ -188,36 +222,62 @@ func (s *Server) generateToken() string {
 	return hex.EncodeToString(b)
 }
 
-func (s *Server) isValidSession(r *http.Request) bool {
+func (s *Server) getSession(r *http.Request) *session {
 	cookie, err := r.Cookie("livesub_token")
 	if err != nil {
-		return false
+		return nil
 	}
-	expiry, ok := s.sessions.Load(cookie.Value)
+	val, ok := s.sessions.Load(cookie.Value)
 	if !ok {
-		return false
+		return nil
 	}
-	if time.Now().After(expiry.(time.Time)) {
+	sess := val.(*session)
+	if time.Now().After(sess.Expiry) {
 		s.sessions.Delete(cookie.Value)
-		return false
+		return nil
 	}
-	return true
+	return sess
+}
+
+func (s *Server) getUser(r *http.Request) *auth.User {
+	sess := s.getSession(r)
+	if sess == nil {
+		return nil
+	}
+	u, _ := s.store.GetUser(sess.UserID)
+	return u
 }
 
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.isValidSession(r) {
-			next(w, r)
+		if s.getSession(r) == nil {
+			if len(r.URL.Path) > 4 && r.URL.Path[:5] == "/api/" {
+				http.Error(w, `{"error":"unauthorized"}`, 401)
+				return
+			}
+			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
-		// API calls get 401, page requests redirect to login
-		if len(r.URL.Path) > 4 && r.URL.Path[:4] == "/api" {
-			http.Error(w, `{"error":"unauthorized"}`, 401)
-			return
-		}
-		http.Redirect(w, r, "/login", http.StatusFound)
+		next(w, r)
 	}
 }
+
+func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := s.getUser(r)
+		if u == nil {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		if !u.IsAdmin {
+			http.Error(w, `{"error":"forbidden"}`, 403)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// --- Auth handlers ---
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -225,15 +285,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.ParseForm()
-	user := r.FormValue("username")
-	pass := r.FormValue("password")
+	username := r.FormValue("username")
+	password := r.FormValue("password")
 
-	s.mu.RLock()
-	validUser := s.username
-	validPass := s.password
-	s.mu.RUnlock()
-
-	if user != validUser || pass != validPass {
+	u, err := s.store.Authenticate(username, password)
+	if err != nil || u == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(401)
 		json.NewEncoder(w).Encode(map[string]string{"error": "用户名或密码错误"})
@@ -241,7 +297,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := s.generateToken()
-	s.sessions.Store(token, time.Now().Add(24*time.Hour))
+	s.sessions.Store(token, &session{UserID: u.ID, Expiry: time.Now().Add(24 * time.Hour)})
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "livesub_token",
@@ -252,9 +308,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	slog.Info("user logged in", "username", user, "ip", r.RemoteAddr)
+	slog.Info("user logged in", "username", username, "admin", u.IsAdmin, "ip", r.RemoteAddr)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "is_admin": u.IsAdmin})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -262,64 +318,247 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		s.sessions.Delete(cookie.Value)
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:   "livesub_token",
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
-	})
+	http.SetCookie(w, &http.Cookie{Name: "livesub_token", Value: "", Path: "/", MaxAge: -1})
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
-func (s *Server) handleRooms(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
+	u := s.getUser(r)
+	if u == nil {
+		http.Error(w, `{"error":"unauthorized"}`, 401)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s.rc.GetAll())
+	json.NewEncoder(w).Encode(u)
+}
+
+// --- Room handlers (filtered by user permissions) ---
+
+func (s *Server) handleRooms(w http.ResponseWriter, r *http.Request) {
+	u := s.getUser(r)
+	if u == nil {
+		http.Error(w, `{"error":"unauthorized"}`, 401)
+		return
+	}
+
+	var rooms []RoomState
+	if u.IsAdmin {
+		rooms = s.rc.GetAll()
+	} else {
+		allowedRooms, _ := s.store.GetUserRooms(u.ID)
+		allowedAccounts, _ := s.store.GetUserAccounts(u.ID)
+		rooms = s.rc.GetFiltered(allowedRooms, allowedAccounts)
+	}
+	if rooms == nil {
+		rooms = []RoomState{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(rooms)
+}
+
+func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
+	u := s.getUser(r)
+	roomID, _ := strconv.ParseInt(r.URL.Query().Get("room"), 10, 64)
+	if !s.userCanAccessRoom(u, roomID) {
+		http.Error(w, `{"error":"forbidden"}`, 403)
+		return
+	}
+	paused := s.rc.Toggle(roomID)
+	slog.Info("room toggled", "room", roomID, "paused", paused, "user", u.Username)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"room_id": roomID, "paused": paused})
 }
 
 func (s *Server) handleSwitchAccount(w http.ResponseWriter, r *http.Request) {
-	roomStr := r.URL.Query().Get("room")
-	roomID, err := strconv.ParseInt(roomStr, 10, 64)
-	if err != nil {
-		http.Error(w, "invalid room", 400)
+	u := s.getUser(r)
+	roomID, _ := strconv.ParseInt(r.URL.Query().Get("room"), 10, 64)
+	idx, _ := strconv.Atoi(r.URL.Query().Get("index"))
+
+	if !s.userCanAccessRoom(u, roomID) {
+		http.Error(w, `{"error":"forbidden"}`, 403)
 		return
 	}
-	idxStr := r.URL.Query().Get("index")
-	idx, err := strconv.Atoi(idxStr)
-	if err != nil {
-		http.Error(w, "invalid index", 400)
-		return
-	}
+
 	sender := s.rc.GetSender(roomID)
 	if sender == nil {
 		http.Error(w, "room not found", 404)
 		return
 	}
-	ok := sender.SwitchAccount(idx)
-	if !ok {
-		http.Error(w, "invalid account index", 400)
+
+	// Check if user can use this account
+	names := sender.AccountNames()
+	if idx < 0 || idx >= len(names) {
+		http.Error(w, "invalid index", 400)
 		return
 	}
+	if !u.IsAdmin {
+		allowed, _ := s.store.GetUserAccounts(u.ID)
+		acctSet := make(map[string]bool)
+		for _, a := range allowed {
+			acctSet[a] = true
+		}
+		if !acctSet[names[idx]] {
+			http.Error(w, `{"error":"forbidden"}`, 403)
+			return
+		}
+	}
+
+	sender.SwitchAccount(idx)
 	newIdx, name := sender.CurrentAccount()
-	slog.Info("account switched via web", "room", roomID, "account", name)
+	slog.Info("account switched", "room", roomID, "account", name, "user", u.Username)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"room_id": roomID, "account_index": newIdx, "account_name": name})
 }
 
-func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
-	roomStr := r.URL.Query().Get("room")
-	roomID, err := strconv.ParseInt(roomStr, 10, 64)
-	if err != nil {
-		http.Error(w, "invalid room", 400)
-		return
+func (s *Server) userCanAccessRoom(u *auth.User, roomID int64) bool {
+	if u == nil {
+		return false
 	}
-	paused := s.rc.Toggle(roomID)
-	slog.Info("room toggled", "room", roomID, "paused", paused)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"room_id": roomID, "paused": paused})
+	if u.IsAdmin {
+		return true
+	}
+	rooms, _ := s.store.GetUserRooms(u.ID)
+	for _, r := range rooms {
+		if r == roomID {
+			return true
+		}
+	}
+	return false
 }
 
+// --- Admin handlers ---
+
+func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case "GET":
+		users, err := s.store.ListUserDetails()
+		if err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, 500)
+			return
+		}
+		if users == nil {
+			users = []auth.UserDetail{}
+		}
+		json.NewEncoder(w).Encode(users)
+
+	case "POST":
+		var req struct {
+			Username string  `json:"username"`
+			Password string  `json:"password"`
+			IsAdmin  bool    `json:"is_admin"`
+			Rooms    []int64 `json:"rooms"`
+			Accounts []string `json:"accounts"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid json"}`, 400)
+			return
+		}
+		if req.Username == "" || req.Password == "" {
+			http.Error(w, `{"error":"username and password required"}`, 400)
+			return
+		}
+		u, err := s.store.CreateUser(req.Username, req.Password, req.IsAdmin)
+		if err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, 400)
+			return
+		}
+		if req.Rooms != nil {
+			s.store.SetUserRooms(u.ID, req.Rooms)
+		}
+		if req.Accounts != nil {
+			s.store.SetUserAccounts(u.ID, req.Accounts)
+		}
+		detail, _ := s.store.GetUserDetail(u.ID)
+		slog.Info("user created", "username", req.Username, "admin", req.IsAdmin)
+		json.NewEncoder(w).Encode(detail)
+
+	default:
+		http.Error(w, "method not allowed", 405)
+	}
+}
+
+func (s *Server) handleAdminUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	idStr := r.URL.Query().Get("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, `{"error":"invalid id"}`, 400)
+		return
+	}
+
+	switch r.Method {
+	case "PUT":
+		var req struct {
+			Password *string  `json:"password"`
+			Rooms    *[]int64 `json:"rooms"`
+			Accounts *[]string `json:"accounts"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid json"}`, 400)
+			return
+		}
+		if req.Password != nil && *req.Password != "" {
+			s.store.UpdatePassword(id, *req.Password)
+		}
+		if req.Rooms != nil {
+			s.store.SetUserRooms(id, *req.Rooms)
+		}
+		if req.Accounts != nil {
+			s.store.SetUserAccounts(id, *req.Accounts)
+		}
+		detail, _ := s.store.GetUserDetail(id)
+		json.NewEncoder(w).Encode(detail)
+
+	case "DELETE":
+		if err := s.store.DeleteUser(id); err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, 500)
+			return
+		}
+		slog.Info("user deleted", "id", id)
+		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+
+	default:
+		http.Error(w, "method not allowed", 405)
+	}
+}
+
+func (s *Server) handleAdminAllRooms(w http.ResponseWriter, r *http.Request) {
+	rooms := s.rc.GetAll()
+	type roomInfo struct {
+		RoomID int64  `json:"room_id"`
+		Name   string `json:"name"`
+	}
+	var infos []roomInfo
+	for _, r := range rooms {
+		infos = append(infos, roomInfo{RoomID: r.RoomID, Name: r.Name})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(infos)
+}
+
+func (s *Server) handleAdminAllAccounts(w http.ResponseWriter, r *http.Request) {
+	// Collect unique account names across all senders
+	seen := make(map[string]bool)
+	var names []string
+	for _, room := range s.rc.GetAll() {
+		for _, a := range room.Accounts {
+			if !seen[a] {
+				seen[a] = true
+				names = append(names, a)
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(names)
+}
+
+// --- Pages ---
+
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
-	if s.isValidSession(r) {
+	if s.getSession(r) != nil {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
@@ -332,148 +571,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, indexHTML)
 }
 
-const loginHTML = `<!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LiveSub 登录</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-  .login-box { background: #16213e; border-radius: 16px; padding: 40px; width: 360px; }
-  h1 { text-align: center; margin-bottom: 30px; color: #e94560; font-size: 22px; }
-  .field { margin-bottom: 20px; }
-  label { display: block; margin-bottom: 6px; font-size: 14px; color: #aaa; }
-  input { width: 100%; padding: 12px; border: 1px solid #333; border-radius: 8px; background: #0f3460; color: #eee; font-size: 16px; outline: none; }
-  input:focus { border-color: #e94560; }
-  .btn { width: 100%; padding: 14px; border: none; border-radius: 8px; background: #e94560; color: #fff; font-size: 16px; font-weight: bold; cursor: pointer; }
-  .btn:hover { opacity: 0.9; }
-  .error { color: #e94560; text-align: center; margin-top: 15px; font-size: 14px; display: none; }
-</style>
-</head>
-<body>
-<div class="login-box">
-  <h1>🎙️ LiveSub</h1>
-  <form id="loginForm">
-    <div class="field">
-      <label>用户名</label>
-      <input type="text" name="username" id="username" autocomplete="username" required>
-    </div>
-    <div class="field">
-      <label>密码</label>
-      <input type="password" name="password" id="password" autocomplete="current-password" required>
-    </div>
-    <button type="submit" class="btn">登录</button>
-    <div class="error" id="error"></div>
-  </form>
-</div>
-<script>
-document.getElementById('loginForm').onsubmit = async (e) => {
-  e.preventDefault();
-  const form = new FormData(e.target);
-  const res = await fetch('/api/login', { method: 'POST', body: new URLSearchParams(form) });
-  if (res.ok) {
-    window.location.href = '/';
-  } else {
-    const data = await res.json();
-    const el = document.getElementById('error');
-    el.textContent = data.error || '登录失败';
-    el.style.display = 'block';
-  }
-};
-</script>
-</body>
-</html>`
-
-const indexHTML = `<!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LiveSub 控制面板</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; padding: 20px; }
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-  h1 { font-size: 24px; color: #e94560; }
-  .logout { padding: 8px 16px; border: 1px solid #555; border-radius: 6px; background: transparent; color: #aaa; cursor: pointer; font-size: 13px; text-decoration: none; }
-  .logout:hover { border-color: #e94560; color: #e94560; }
-  .rooms { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
-  .room { background: #16213e; border-radius: 12px; padding: 20px; min-width: 300px; max-width: 400px; flex: 1; }
-  .room-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-  .room-name { font-size: 18px; font-weight: bold; }
-  .room-id { font-size: 12px; color: #888; }
-  .status { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
-  .badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; }
-  .badge-live { background: #e94560; }
-  .badge-offline { background: #444; }
-  .badge-translating { background: #0f3460; }
-  .badge-paused { background: #e9a045; color: #000; }
-  .last-text { font-size: 13px; color: #aaa; min-height: 40px; margin-bottom: 15px; word-break: break-all; }
-  .account-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-  .account-row label { font-size: 13px; color: #aaa; white-space: nowrap; }
-  .account-select { flex: 1; padding: 6px 10px; border: 1px solid #333; border-radius: 6px; background: #0f3460; color: #eee; font-size: 13px; outline: none; cursor: pointer; }
-  .account-select:focus { border-color: #e94560; }
-  .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; transition: all 0.2s; }
-  .btn-pause { background: #e94560; color: #fff; }
-  .btn-resume { background: #4ecca3; color: #000; }
-  .btn:hover { opacity: 0.85; transform: scale(1.02); }
-  .btn:active { transform: scale(0.98); }
-</style>
-</head>
-<body>
-<div class="header">
-  <h1>🎙️ LiveSub 控制面板</h1>
-  <a href="/api/logout" class="logout">退出登录</a>
-</div>
-<div class="rooms" id="rooms"></div>
-<script>
-async function fetchRooms() {
-  const res = await fetch('/api/rooms');
-  if (res.status === 401) { window.location.href = '/login'; return; }
-  const rooms = await res.json();
-  const el = document.getElementById('rooms');
-  el.innerHTML = rooms.map(r => ` + "`" + `
-    <div class="room">
-      <div class="room-header">
-        <span class="room-name">${r.name || '直播间'}</span>
-        <span class="room-id">#${r.room_id}</span>
-      </div>
-      <div class="status">
-        <span class="badge ${r.live ? 'badge-live' : 'badge-offline'}">${r.live ? '🔴 直播中' : '⚫ 未开播'}</span>
-        <span class="badge ${r.paused ? 'badge-paused' : 'badge-translating'}">${r.paused ? '⏸ 已暂停' : '▶️ 翻译中'}</span>
-      </div>
-      <div class="last-text">${r.stt_text || '等待语音...'}</div>
-      ${r.accounts && r.accounts.length > 1 ? ` + "`" + `
-      <div class="account-row">
-        <label>🔑 账号:</label>
-        <select class="account-select" onchange="switchAccount(${r.room_id}, this.value)">
-          ${r.accounts.map((a, i) => ` + "`" + `<option value="${i}" ${i === r.current_account ? 'selected' : ''}>${a}</option>` + "`" + `).join('')}
-        </select>
-      </div>
-      ` + "`" + ` : ''}
-      <button class="btn ${r.paused ? 'btn-resume' : 'btn-pause'}" onclick="toggle(${r.room_id})">
-        ${r.paused ? '▶️ 恢复翻译' : '⏸ 暂停翻译'}
-      </button>
-    </div>
-  ` + "`" + `).join('');
+func (s *Server) handleAdminPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, adminHTML)
 }
-
-async function toggle(roomId) {
-  await fetch('/api/toggle?room=' + roomId);
-  fetchRooms();
-}
-
-async function switchAccount(roomId, index) {
-  await fetch('/api/account?room=' + roomId + '&index=' + index);
-  fetchRooms();
-}
-
-fetchRooms();
-setInterval(fetchRooms, 2000);
-</script>
-</body>
-</html>`

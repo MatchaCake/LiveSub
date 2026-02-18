@@ -1,0 +1,379 @@
+package web
+
+const faviconTag = `<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>">`
+
+const loginHTML = `<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveSub 登录</title>
+` + faviconTag + `
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .login-box { background: #16213e; border-radius: 16px; padding: 40px; width: 360px; }
+  h1 { text-align: center; margin-bottom: 30px; color: #e94560; font-size: 22px; }
+  .field { margin-bottom: 20px; }
+  label { display: block; margin-bottom: 6px; font-size: 14px; color: #aaa; }
+  input { width: 100%; padding: 12px; border: 1px solid #333; border-radius: 8px; background: #0f3460; color: #eee; font-size: 16px; outline: none; }
+  input:focus { border-color: #e94560; }
+  .btn { width: 100%; padding: 14px; border: none; border-radius: 8px; background: #e94560; color: #fff; font-size: 16px; font-weight: bold; cursor: pointer; }
+  .btn:hover { opacity: 0.9; }
+  .error { color: #e94560; text-align: center; margin-top: 15px; font-size: 14px; display: none; }
+</style>
+</head>
+<body>
+<div class="login-box">
+  <h1>🎙️ LiveSub</h1>
+  <form id="loginForm">
+    <div class="field">
+      <label>用户名</label>
+      <input type="text" name="username" id="username" autocomplete="username" required>
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input type="password" name="password" id="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit" class="btn">登录</button>
+    <div class="error" id="error"></div>
+  </form>
+</div>
+<script>
+document.getElementById('loginForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const form = new FormData(e.target);
+  const res = await fetch('/api/login', { method: 'POST', body: new URLSearchParams(form) });
+  if (res.ok) {
+    window.location.href = '/';
+  } else {
+    const data = await res.json();
+    const el = document.getElementById('error');
+    el.textContent = data.error || '登录失败';
+    el.style.display = 'block';
+  }
+};
+</script>
+</body>
+</html>`
+
+const indexHTML = `<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveSub 控制面板</title>
+` + faviconTag + `
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; padding: 20px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 10px; }
+  h1 { font-size: 24px; color: #e94560; }
+  .header-right { display: flex; gap: 10px; align-items: center; }
+  .header-right span { font-size: 13px; color: #aaa; }
+  .link-btn { padding: 8px 16px; border: 1px solid #555; border-radius: 6px; background: transparent; color: #aaa; cursor: pointer; font-size: 13px; text-decoration: none; }
+  .link-btn:hover { border-color: #e94560; color: #e94560; }
+  .rooms { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
+  .room { background: #16213e; border-radius: 12px; padding: 20px; min-width: 300px; max-width: 400px; flex: 1; }
+  .room-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .room-name { font-size: 18px; font-weight: bold; }
+  .room-id { font-size: 12px; color: #888; }
+  .status { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+  .badge-live { background: #e94560; }
+  .badge-offline { background: #444; }
+  .badge-translating { background: #0f3460; }
+  .badge-paused { background: #e9a045; color: #000; }
+  .last-text { font-size: 13px; color: #aaa; min-height: 40px; margin-bottom: 15px; word-break: break-all; }
+  .account-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .account-row label { font-size: 13px; color: #aaa; white-space: nowrap; }
+  .account-select { flex: 1; padding: 6px 10px; border: 1px solid #333; border-radius: 6px; background: #0f3460; color: #eee; font-size: 13px; outline: none; cursor: pointer; }
+  .account-select:focus { border-color: #e94560; }
+  .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; transition: all 0.2s; }
+  .btn-pause { background: #e94560; color: #fff; }
+  .btn-resume { background: #4ecca3; color: #000; }
+  .btn:hover { opacity: 0.85; transform: scale(1.02); }
+  .btn:active { transform: scale(0.98); }
+  .empty { text-align: center; color: #666; margin-top: 60px; font-size: 16px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🎙️ LiveSub 控制面板</h1>
+  <div class="header-right">
+    <span id="userInfo"></span>
+    <a href="/admin" class="link-btn" id="adminLink" style="display:none">⚙️ 管理</a>
+    <a href="/api/logout" class="link-btn">退出登录</a>
+  </div>
+</div>
+<div class="rooms" id="rooms"><div class="empty">加载中...</div></div>
+<script>
+let currentUser = null;
+
+async function init() {
+  const res = await fetch('/api/me');
+  if (res.status === 401) { window.location.href = '/login'; return; }
+  currentUser = await res.json();
+  document.getElementById('userInfo').textContent = currentUser.username;
+  if (currentUser.is_admin) {
+    document.getElementById('adminLink').style.display = '';
+  }
+  fetchRooms();
+  setInterval(fetchRooms, 2000);
+}
+
+async function fetchRooms() {
+  const res = await fetch('/api/rooms');
+  if (res.status === 401) { window.location.href = '/login'; return; }
+  const rooms = await res.json();
+  const el = document.getElementById('rooms');
+  if (!rooms || rooms.length === 0) {
+    el.innerHTML = '<div class="empty">暂无可查看的直播间</div>';
+    return;
+  }
+  el.innerHTML = rooms.map(r => ` + "`" + `
+    <div class="room">
+      <div class="room-header">
+        <span class="room-name">${r.name || '直播间'}</span>
+        <span class="room-id">#${r.room_id}</span>
+      </div>
+      <div class="status">
+        <span class="badge ${r.live ? 'badge-live' : 'badge-offline'}">${r.live ? '🔴 直播中' : '⚫ 未开播'}</span>
+        <span class="badge ${r.paused ? 'badge-paused' : 'badge-translating'}">${r.paused ? '⏸ 已暂停' : '▶️ 翻译中'}</span>
+      </div>
+      <div class="last-text">${r.stt_text || '等待语音...'}</div>
+      ${r.accounts && r.accounts.length > 1 ? ` + "`" + `
+      <div class="account-row">
+        <label>🔑 账号:</label>
+        <select class="account-select" onchange="switchAccount(${r.room_id}, this.value)">
+          ${r.accounts.map((a, i) => ` + "`" + `<option value="${i}" ${i === r.current_account ? 'selected' : ''}>${a}</option>` + "`" + `).join('')}
+        </select>
+      </div>
+      ` + "`" + ` : (r.accounts && r.accounts.length === 1 ? ` + "`" + `
+      <div class="account-row">
+        <label>🔑 账号:</label>
+        <span style="font-size:13px;color:#ccc;">${r.accounts[0]}</span>
+      </div>
+      ` + "`" + ` : '')}
+      <button class="btn ${r.paused ? 'btn-resume' : 'btn-pause'}" onclick="toggle(${r.room_id})">
+        ${r.paused ? '▶️ 恢复翻译' : '⏸ 暂停翻译'}
+      </button>
+    </div>
+  ` + "`" + `).join('');
+}
+
+async function toggle(roomId) {
+  await fetch('/api/toggle?room=' + roomId);
+  fetchRooms();
+}
+
+async function switchAccount(roomId, index) {
+  await fetch('/api/account?room=' + roomId + '&index=' + index);
+  fetchRooms();
+}
+
+init();
+</script>
+</body>
+</html>`
+
+const adminHTML = `<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveSub 管理</title>
+` + faviconTag + `
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; padding: 20px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+  h1 { font-size: 24px; color: #e94560; }
+  h2 { font-size: 18px; color: #e94560; margin-bottom: 15px; }
+  .link-btn { padding: 8px 16px; border: 1px solid #555; border-radius: 6px; background: transparent; color: #aaa; cursor: pointer; font-size: 13px; text-decoration: none; }
+  .link-btn:hover { border-color: #e94560; color: #e94560; }
+  .section { background: #16213e; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #0f3460; font-size: 14px; }
+  th { color: #aaa; font-weight: normal; font-size: 13px; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin: 2px; }
+  .tag-room { background: #0f3460; }
+  .tag-account { background: #3d1e5c; }
+  .tag-admin { background: #e94560; }
+  .small-btn { padding: 5px 12px; border: 1px solid #555; border-radius: 4px; background: transparent; color: #aaa; cursor: pointer; font-size: 12px; }
+  .small-btn:hover { border-color: #e94560; color: #e94560; }
+  .small-btn.danger:hover { border-color: #ff4444; color: #ff4444; }
+  .form-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+  .form-row input, .form-row select { padding: 8px 12px; border: 1px solid #333; border-radius: 6px; background: #0f3460; color: #eee; font-size: 14px; outline: none; }
+  .form-row input:focus, .form-row select:focus { border-color: #e94560; }
+  .form-row input[type="text"], .form-row input[type="password"] { width: 160px; }
+  .add-btn { padding: 8px 20px; border: none; border-radius: 6px; background: #4ecca3; color: #000; cursor: pointer; font-size: 14px; font-weight: bold; }
+  .add-btn:hover { opacity: 0.9; }
+  .checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; }
+  .checkbox-group label { display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; padding: 4px 8px; border: 1px solid #333; border-radius: 6px; }
+  .checkbox-group label:hover { border-color: #e94560; }
+  .checkbox-group input[type="checkbox"] { cursor: pointer; }
+  .msg { padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 13px; display: none; }
+  .msg.ok { background: #1a3a2a; color: #4ecca3; display: block; }
+  .msg.err { background: #3a1a1a; color: #e94560; display: block; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>⚙️ 用户管理</h1>
+  <a href="/" class="link-btn">← 返回控制面板</a>
+</div>
+
+<div class="section">
+  <h2>👥 用户列表</h2>
+  <table id="usersTable">
+    <thead><tr><th>用户名</th><th>角色</th><th>直播间</th><th>B站账号</th><th>操作</th></tr></thead>
+    <tbody id="usersBody"></tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h2>➕ 添加用户</h2>
+  <div id="addMsg" class="msg"></div>
+  <div class="form-row">
+    <input type="text" id="newUsername" placeholder="用户名">
+    <input type="password" id="newPassword" placeholder="密码">
+    <label style="font-size:13px;cursor:pointer;"><input type="checkbox" id="newIsAdmin"> 管理员</label>
+  </div>
+  <div style="margin-bottom:10px;">
+    <div style="font-size:13px;color:#aaa;margin-bottom:6px;">分配直播间:</div>
+    <div class="checkbox-group" id="roomCheckboxes"></div>
+  </div>
+  <div style="margin-bottom:10px;">
+    <div style="font-size:13px;color:#aaa;margin-bottom:6px;">分配B站账号:</div>
+    <div class="checkbox-group" id="accountCheckboxes"></div>
+  </div>
+  <button class="add-btn" onclick="addUser()">添加</button>
+</div>
+
+<script>
+let allRooms = [];
+let allAccounts = [];
+
+async function init() {
+  const [roomsRes, acctsRes] = await Promise.all([
+    fetch('/api/admin/all-rooms'),
+    fetch('/api/admin/all-accounts')
+  ]);
+  allRooms = await roomsRes.json() || [];
+  allAccounts = await acctsRes.json() || [];
+  renderCheckboxes();
+  loadUsers();
+}
+
+function renderCheckboxes() {
+  document.getElementById('roomCheckboxes').innerHTML = allRooms.map(r =>
+    '<label><input type="checkbox" value="' + r.room_id + '"> ' + (r.name || r.room_id) + '</label>'
+  ).join('');
+  document.getElementById('accountCheckboxes').innerHTML = allAccounts.map(a =>
+    '<label><input type="checkbox" value="' + a + '"> ' + a + '</label>'
+  ).join('');
+}
+
+async function loadUsers() {
+  const res = await fetch('/api/admin/users');
+  const users = await res.json() || [];
+  const body = document.getElementById('usersBody');
+  body.innerHTML = users.map(u => {
+    const rooms = (u.rooms||[]).map(r => {
+      const info = allRooms.find(x => x.room_id === r);
+      return '<span class="tag tag-room">' + (info ? info.name : r) + '</span>';
+    }).join('');
+    const accts = (u.accounts||[]).map(a =>
+      '<span class="tag tag-account">' + a + '</span>'
+    ).join('');
+    const role = u.is_admin ? '<span class="tag tag-admin">管理员</span>' : '普通用户';
+    const actions = u.is_admin ? '' :
+      '<button class="small-btn" onclick="editUser(' + u.id + ')">编辑</button> ' +
+      '<button class="small-btn danger" onclick="deleteUser(' + u.id + ',\'' + u.username + '\')">删除</button>';
+    return '<tr><td>' + u.username + '</td><td>' + role + '</td><td>' + (rooms||'无') + '</td><td>' + (accts||'无') + '</td><td>' + actions + '</td></tr>';
+  }).join('');
+}
+
+async function addUser() {
+  const username = document.getElementById('newUsername').value.trim();
+  const password = document.getElementById('newPassword').value;
+  const isAdmin = document.getElementById('newIsAdmin').checked;
+  const rooms = [...document.querySelectorAll('#roomCheckboxes input:checked')].map(c => parseInt(c.value));
+  const accounts = [...document.querySelectorAll('#accountCheckboxes input:checked')].map(c => c.value);
+
+  const msgEl = document.getElementById('addMsg');
+  if (!username || !password) {
+    msgEl.className = 'msg err'; msgEl.textContent = '请填写用户名和密码'; return;
+  }
+
+  const res = await fetch('/api/admin/users', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username, password, is_admin: isAdmin, rooms, accounts})
+  });
+
+  if (res.ok) {
+    msgEl.className = 'msg ok'; msgEl.textContent = '用户 ' + username + ' 已创建';
+    document.getElementById('newUsername').value = '';
+    document.getElementById('newPassword').value = '';
+    document.getElementById('newIsAdmin').checked = false;
+    document.querySelectorAll('#roomCheckboxes input, #accountCheckboxes input').forEach(c => c.checked = false);
+    loadUsers();
+  } else {
+    const data = await res.json();
+    msgEl.className = 'msg err'; msgEl.textContent = data.error || '创建失败';
+  }
+}
+
+async function editUser(id) {
+  const res = await fetch('/api/admin/users');
+  const users = await res.json();
+  const u = users.find(x => x.id === id);
+  if (!u) return;
+
+  const newPw = prompt('新密码 (留空不改):');
+
+  // Room selection
+  const roomChoices = allRooms.map(r => ({id: r.room_id, name: r.name || String(r.room_id), checked: (u.rooms||[]).includes(r.room_id)}));
+  const acctChoices = allAccounts.map(a => ({name: a, checked: (u.accounts||[]).includes(a)}));
+
+  // Simple prompt-based editing (checkbox dialogs not practical in prompt)
+  const roomStr = prompt(
+    '分配直播间 (输入序号，逗号分隔):\\n' + roomChoices.map((r,i) => (i+1) + '. ' + r.name + (r.checked?' ✓':'')).join('\\n'),
+    roomChoices.filter(r=>r.checked).map((_,i)=>i+1).join(',')
+  );
+  const acctStr = prompt(
+    '分配B站账号 (输入序号，逗号分隔):\\n' + acctChoices.map((a,i) => (i+1) + '. ' + a.name + (a.checked?' ✓':'')).join('\\n'),
+    acctChoices.filter(a=>a.checked).map((_,i)=>i+1).join(',')
+  );
+
+  if (roomStr === null && acctStr === null && (newPw === null || newPw === '')) return;
+
+  const body = {};
+  if (newPw) body.password = newPw;
+  if (roomStr !== null) {
+    body.rooms = roomStr.split(',').filter(s=>s.trim()).map(s => roomChoices[parseInt(s.trim())-1]?.id).filter(Boolean);
+  }
+  if (acctStr !== null) {
+    body.accounts = acctStr.split(',').filter(s=>s.trim()).map(s => acctChoices[parseInt(s.trim())-1]?.name).filter(Boolean);
+  }
+
+  await fetch('/api/admin/user?id=' + id, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  loadUsers();
+}
+
+async function deleteUser(id, name) {
+  if (!confirm('确定删除用户 ' + name + '?')) return;
+  await fetch('/api/admin/user?id=' + id, {method: 'DELETE'});
+  loadUsers();
+}
+
+init();
+</script>
+</body>
+</html>`
