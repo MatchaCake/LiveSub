@@ -55,7 +55,9 @@ func (s *Store) ListHiddenRooms() map[int64]bool {
 	defer rows.Close()
 	for rows.Next() {
 		var id int64
-		rows.Scan(&id)
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
 		m[id] = true
 	}
 	return m
@@ -91,7 +93,9 @@ func (s *Store) ListStreams() ([]StreamInfo, error) {
 	var streams []StreamInfo
 	for rows.Next() {
 		var si StreamInfo
-		rows.Scan(&si.ID, &si.Name, &si.RoomID, &si.SourceLang, &si.TargetLang, &si.CreatedAt)
+		if err := rows.Scan(&si.ID, &si.Name, &si.RoomID, &si.SourceLang, &si.TargetLang, &si.CreatedAt); err != nil {
+			return nil, err
+		}
 		streams = append(streams, si)
 	}
 	return streams, nil

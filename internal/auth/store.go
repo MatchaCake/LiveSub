@@ -20,10 +20,13 @@ type Store struct {
 }
 
 func NewStore(dbPath string) (*Store, error) {
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL")
+	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
+	// SQLite only supports one writer at a time; limit pool to 1 connection
+	// to avoid SQLITE_BUSY under concurrent web handler access.
+	db.SetMaxOpenConns(1)
 
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
@@ -198,7 +201,9 @@ func (s *Store) GetUserRooms(userID int64) ([]int64, error) {
 	var rooms []int64
 	for rows.Next() {
 		var r int64
-		rows.Scan(&r)
+		if err := rows.Scan(&r); err != nil {
+			return nil, err
+		}
 		rooms = append(rooms, r)
 	}
 	return rooms, nil
@@ -212,9 +217,13 @@ func (s *Store) SetUserRooms(userID int64, roomIDs []int64) error {
 	}
 	defer tx.Rollback()
 
-	tx.Exec(`DELETE FROM user_rooms WHERE user_id = ?`, userID)
+	if _, err := tx.Exec(`DELETE FROM user_rooms WHERE user_id = ?`, userID); err != nil {
+		return err
+	}
 	for _, rid := range roomIDs {
-		tx.Exec(`INSERT INTO user_rooms (user_id, room_id) VALUES (?, ?)`, userID, rid)
+		if _, err := tx.Exec(`INSERT INTO user_rooms (user_id, room_id) VALUES (?, ?)`, userID, rid); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -232,7 +241,9 @@ func (s *Store) GetUserAccounts(userID int64) ([]string, error) {
 	var accounts []string
 	for rows.Next() {
 		var a string
-		rows.Scan(&a)
+		if err := rows.Scan(&a); err != nil {
+			return nil, err
+		}
 		accounts = append(accounts, a)
 	}
 	return accounts, nil
@@ -246,9 +257,13 @@ func (s *Store) SetUserAccounts(userID int64, accounts []string) error {
 	}
 	defer tx.Rollback()
 
-	tx.Exec(`DELETE FROM user_accounts WHERE user_id = ?`, userID)
+	if _, err := tx.Exec(`DELETE FROM user_accounts WHERE user_id = ?`, userID); err != nil {
+		return err
+	}
 	for _, a := range accounts {
-		tx.Exec(`INSERT INTO user_accounts (user_id, account_name) VALUES (?, ?)`, userID, a)
+		if _, err := tx.Exec(`INSERT INTO user_accounts (user_id, account_name) VALUES (?, ?)`, userID, a); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -312,10 +327,12 @@ type AuditEntry struct {
 
 // Log records a user action.
 func (s *Store) Log(userID int64, username, action, detail, ip string) {
-	s.db.Exec(
+	if _, err := s.db.Exec(
 		`INSERT INTO audit_log (user_id, username, action, detail, ip) VALUES (?, ?, ?, ?, ?)`,
 		userID, username, action, detail, ip,
-	)
+	); err != nil {
+		slog.Error("audit log write failed", "err", err)
+	}
 }
 
 // GetAuditLog returns recent audit entries (newest first).
@@ -335,7 +352,9 @@ func (s *Store) GetAuditLog(limit int) ([]AuditEntry, error) {
 	var entries []AuditEntry
 	for rows.Next() {
 		var e AuditEntry
-		rows.Scan(&e.ID, &e.Time, &e.UserID, &e.Username, &e.Action, &e.Detail, &e.IP)
+		if err := rows.Scan(&e.ID, &e.Time, &e.UserID, &e.Username, &e.Action, &e.Detail, &e.IP); err != nil {
+			return nil, err
+		}
 		entries = append(entries, e)
 	}
 	return entries, nil
@@ -343,8 +362,4 @@ func (s *Store) GetAuditLog(limit int) ([]AuditEntry, error) {
 
 func (s *Store) Close() error {
 	return s.db.Close()
-}
-
-func init() {
-	_ = slog.Info // ensure slog imported for future use
 }

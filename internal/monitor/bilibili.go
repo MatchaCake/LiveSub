@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -32,7 +33,9 @@ type RoomState struct {
 type BilibiliMonitor struct {
 	client   *http.Client
 	interval time.Duration
-	rooms    map[int64]*RoomState
+
+	mu    sync.Mutex
+	rooms map[int64]*RoomState
 }
 
 func NewBilibiliMonitor(interval time.Duration) *BilibiliMonitor {
@@ -45,13 +48,15 @@ func NewBilibiliMonitor(interval time.Duration) *BilibiliMonitor {
 
 // RoomEvent is emitted when a room goes live or offline.
 type RoomEvent struct {
-	RoomID  int64
-	Live    bool   // true=just went live, false=just went offline
-	Title   string
+	RoomID int64
+	Live   bool // true=just went live, false=just went offline
+	Title  string
 }
 
 // AddRooms registers new room IDs for monitoring (skips already tracked).
 func (m *BilibiliMonitor) AddRooms(roomIDs []int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, id := range roomIDs {
 		if _, exists := m.rooms[id]; !exists {
 			m.rooms[id] = &RoomState{RoomID: id}
@@ -62,6 +67,8 @@ func (m *BilibiliMonitor) AddRooms(roomIDs []int64) {
 
 // RemoveRooms stops monitoring the given rooms and emits offline events for any that were live.
 func (m *BilibiliMonitor) RemoveRooms(roomIDs []int64, events chan<- RoomEvent) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, id := range roomIDs {
 		if state, exists := m.rooms[id]; exists {
 			if state.WasLive {
@@ -76,7 +83,6 @@ func (m *BilibiliMonitor) RemoveRooms(roomIDs []int64, events chan<- RoomEvent) 
 // Watch monitors the given rooms and sends events on transitions.
 // Blocks until context is cancelled.
 func (m *BilibiliMonitor) Watch(ctx context.Context, roomIDs []int64, events chan<- RoomEvent) error {
-	// Init room states
 	m.AddRooms(roomIDs)
 
 	slog.Info("bilibili monitor started", "rooms", len(roomIDs), "interval", m.interval)
@@ -84,7 +90,6 @@ func (m *BilibiliMonitor) Watch(ctx context.Context, roomIDs []int64, events cha
 	ticker := time.NewTicker(m.interval)
 	defer ticker.Stop()
 
-	// Check immediately on start
 	m.checkAll(ctx, events)
 
 	for {
@@ -98,7 +103,15 @@ func (m *BilibiliMonitor) Watch(ctx context.Context, roomIDs []int64, events cha
 }
 
 func (m *BilibiliMonitor) checkAll(ctx context.Context, events chan<- RoomEvent) {
+	m.mu.Lock()
+	// Snapshot room states to check (hold lock briefly, not during HTTP calls)
+	states := make([]*RoomState, 0, len(m.rooms))
 	for _, state := range m.rooms {
+		states = append(states, state)
+	}
+	m.mu.Unlock()
+
+	for _, state := range states {
 		if err := m.checkRoom(ctx, state, events); err != nil {
 			slog.Warn("check room failed", "room", state.RoomID, "err", err)
 		}
@@ -113,7 +126,6 @@ func (m *BilibiliMonitor) checkRoom(ctx context.Context, state *RoomState, event
 
 	isLive := info.LiveStatus == 1
 
-	// Transition: offline → live
 	if isLive && !state.WasLive {
 		slog.Info("room went LIVE", "room", state.RoomID, "title", info.Title)
 		state.Title = info.Title
@@ -124,7 +136,6 @@ func (m *BilibiliMonitor) checkRoom(ctx context.Context, state *RoomState, event
 		}
 	}
 
-	// Transition: live → offline
 	if !isLive && state.WasLive {
 		slog.Info("room went OFFLINE", "room", state.RoomID)
 		events <- RoomEvent{
