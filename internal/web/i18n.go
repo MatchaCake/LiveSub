@@ -340,8 +340,8 @@ function langSwitcher() {
 }
 </script>
 <style>
-.lang-switch { display: flex; gap: 4px; }
-.lang-btn { padding: 4px 10px; border: 1px solid #444; border-radius: 4px; background: transparent; color: #aaa; cursor: pointer; font-size: 12px; }
+.lang-switch { display: flex; gap: 4px; align-items: center; }
+.lang-btn { padding: 4px 10px; border: 1px solid #444; border-radius: 4px; background: transparent; color: #aaa; cursor: pointer; font-size: 12px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
 .lang-btn:hover { border-color: #e94560; color: #eee; }
 .lang-btn.active { background: #e94560; color: #fff; border-color: #e94560; }
 </style>`
