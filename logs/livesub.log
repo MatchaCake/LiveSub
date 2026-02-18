@@ -3203,3 +3203,12 @@ time=2026-02-18T15:12:42.546+08:00 level=INFO msg="monitor: added room" room=213
 time=2026-02-18T15:12:42.546+08:00 level=INFO msg="monitor: added room" room=22959964
 time=2026-02-18T15:12:42.546+08:00 level=INFO msg="bilibili monitor started" rooms=3 interval=30s
 time=2026-02-18T15:12:44.542+08:00 level=INFO msg="user logged in" username=admin admin=true ip=127.0.0.1:40758
+time=2026-02-18T15:17:26.649+08:00 level=INFO msg="user logged in" username=admin admin=true ip=192.168.1.114:43210
+time=2026-02-18T15:27:08.951+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T15:27:08.957+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T15:27:09.025+08:00 level=INFO msg="web control panel started" addr=:8899
+time=2026-02-18T15:27:09.025+08:00 level=INFO msg="synced bili accounts to senders" count=3
+time=2026-02-18T15:27:09.026+08:00 level=INFO msg="livesub started" streams=3 rooms="[14988041 21396545 22959964]" web=http://localhost:8899
+time=2026-02-18T15:27:09.026+08:00 level=INFO msg="monitor: watching room" room_id=22959964
+time=2026-02-18T15:27:09.026+08:00 level=INFO msg="monitor: watching room" room_id=21396545
+time=2026-02-18T15:27:09.026+08:00 level=INFO msg="monitor: watching room" room_id=14988041
