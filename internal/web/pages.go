@@ -156,19 +156,14 @@ async function fetchRooms() {
         <span class="badge ${r.paused ? 'badge-paused' : 'badge-translating'}">${r.paused ? t('paused') : t('translating')}</span>
       </div>
       <div class="last-text">${r.stt_text || t('waiting_voice')}</div>
-      ${r.accounts && r.accounts.length > 1 ? ` + "`" + `
+      ${r.accounts && r.accounts.length > 0 ? ` + "`" + `
       <div class="account-row">
-        <label>🔑 账号:</label>
+        <label>${t('account_label')}</label>
         <select class="account-select" onchange="switchAccount(${r.room_id}, this.value)">
           ${r.accounts.map((a, i) => ` + "`" + `<option value="${i}" ${i === r.current_account ? 'selected' : ''}>${a}</option>` + "`" + `).join('')}
         </select>
       </div>
-      ` + "`" + ` : (r.accounts && r.accounts.length === 1 ? ` + "`" + `
-      <div class="account-row">
-        <label>🔑 账号:</label>
-        <span style="font-size:13px;color:#ccc;">${r.accounts[0]}</span>
-      </div>
-      ` + "`" + ` : '')}
+      ` + "`" + ` : ''}
       <button class="btn ${r.paused ? 'btn-resume' : 'btn-pause'}" onclick="toggle(${r.room_id})">
         ${r.paused ? t('resume_btn') : t('pause_btn')}
       </button>
