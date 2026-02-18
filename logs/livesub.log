@@ -1205,3 +1205,50 @@ time=2026-02-18T11:07:41.957+08:00 level=INFO msg="STT final" text=" ほな、�
 time=2026-02-18T11:07:41.957+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" ほな、片思い 行こっか？" score=0.45 conf=0.6543476581573486 len=13 hard=true soft=false longText=false
 time=2026-02-18T11:07:46.039+08:00 level=INFO msg="STT final" text=" やっぱ ちょちょちょちょ 待ちんかい 待ってんかい？" lang=ja-jp confidence=0.23421040177345276
 time=2026-02-18T11:07:46.039+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" やっぱ ちょちょちょちょ 待ちんかい 待ってんかい？" score=0.78 conf=0.23421040177345276 len=27 hard=true soft=false longText=false
+time=2026-02-18T11:08:06.462+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T11:08:06.462+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T11:08:06.482+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041]
+time=2026-02-18T11:08:06.482+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T11:08:06.593+08:00 level=INFO msg="room went LIVE" room=14988041 title=正在调试
+time=2026-02-18T11:08:06.594+08:00 level=INFO msg="🎙️ room went live, starting pipeline" name="Test Stream" room=14988041 title=正在调试
+time=2026-02-18T11:08:06.673+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
+time=2026-02-18T11:08:06.673+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/795931/live_295893148_2747772.flv
+time=2026-02-18T11:08:08.065+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
+time=2026-02-18T11:08:08.065+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
+time=2026-02-18T11:08:08.065+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
+time=2026-02-18T11:08:13.525+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
+time=2026-02-18T11:08:13.525+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
+time=2026-02-18T11:08:13.525+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
+time=2026-02-18T11:09:13.684+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
+time=2026-02-18T11:09:13.684+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
+time=2026-02-18T11:09:13.684+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
+time=2026-02-18T11:10:13.517+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
+time=2026-02-18T11:10:13.517+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
+time=2026-02-18T11:10:13.517+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
+time=2026-02-18T11:10:43.430+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
+time=2026-02-18T11:10:43.430+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
+time=2026-02-18T11:10:43.430+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
+time=2026-02-18T11:11:37.120+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
+time=2026-02-18T11:11:37.120+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
+time=2026-02-18T11:11:37.120+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
+time=2026-02-18T11:11:46.481+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
+time=2026-02-18T11:11:46.481+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
+time=2026-02-18T11:11:46.481+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
+time=2026-02-18T11:11:59.024+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
+time=2026-02-18T11:11:59.024+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
+time=2026-02-18T11:11:59.024+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
+time=2026-02-18T11:12:17.432+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
+time=2026-02-18T11:12:17.432+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
+time=2026-02-18T11:12:17.432+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
+time=2026-02-18T11:12:19.290+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
+time=2026-02-18T11:12:19.290+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
+time=2026-02-18T11:12:19.290+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
+time=2026-02-18T11:12:36.100+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
+time=2026-02-18T11:12:36.100+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
+time=2026-02-18T11:12:36.100+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
+time=2026-02-18T11:12:40.461+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
+time=2026-02-18T11:12:40.461+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
+time=2026-02-18T11:12:40.461+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
+time=2026-02-18T11:12:53.182+08:00 level=INFO msg="STT final" text="" lang=cmn-hans-cn confidence=0
+time=2026-02-18T11:12:53.182+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0 len=0 text=""
+time=2026-02-18T11:12:53.182+08:00 level=INFO msg="📝 direct" name="Test Stream" text="" lang=cmn-hans-cn
