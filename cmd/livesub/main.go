@@ -270,16 +270,13 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 		textLen := len([]rune(result.Text))
 		musicScore := musicDetector.Score()
 
-		// Layer 1: FFT detects music start (score spike enters singing mode)
-		// Layer 2: consecutive long text also enters singing mode (fallback)
-		// Exit: only when consecutive short texts (speech pattern)
-		if !singing && musicScore > highMusicScore {
+		// Enter singing mode: FFT high AND long text (both required)
+		// Fast speech = long text but low FFT → won't trigger
+		// Singing = long text AND high FFT → triggers
+		if !singing && musicScore > highMusicScore && textLen > longTextThreshold {
 			singing = true
-			slog.Info("🎵 singing mode ON (FFT)", "name", sc.Name, "musicScore", fmt.Sprintf("%.2f", musicScore))
-		}
-		if !singing && textLen > longTextThreshold && prevLen > longTextThreshold {
-			singing = true
-			slog.Info("🎵 singing mode ON (text)", "name", sc.Name, "curLen", textLen, "prevLen", prevLen)
+			slog.Info("🎵 singing mode ON", "name", sc.Name,
+				"musicScore", fmt.Sprintf("%.2f", musicScore), "len", textLen)
 		}
 		// Exit only on consecutive short texts
 		if singing && textLen < shortTextThreshold && prevLen < shortTextThreshold {
