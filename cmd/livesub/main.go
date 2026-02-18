@@ -256,7 +256,7 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	const (
 		longTextThreshold  = 50
 		shortTextThreshold = 30
-		highMusicScore     = 0.80
+		highMusicScore     = 0.55
 	)
 	var prevLen int
 	singing := false
