@@ -13,6 +13,7 @@ type Config struct {
 	Gemini   GeminiConfig   `yaml:"gemini"`
 	Bilibili BilibiliConfig `yaml:"bilibili"`
 	Streams  []StreamConfig `yaml:"streams"`
+	WebPort  int            `yaml:"web_port"` // control panel port (default 8899)
 }
 
 type GoogleConfig struct {

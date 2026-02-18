@@ -2110,3 +2110,80 @@ time=2026-02-18T12:00:53.897+08:00 level=INFO msg="danmaku sent" room=14988041 m
 time=2026-02-18T12:00:53.961+08:00 level=INFO msg="📝 translated" worker=1 name="Test Stream" src=" あきたきたきたきたきたきた！" dst=秋田来了来了来来来来！
 time=2026-02-18T12:00:53.961+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=71 text=秋田来了来了来来来来！
 time=2026-02-18T12:00:59.055+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【秋田来了来了来来来来！】
+time=2026-02-18T12:01:04.256+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T12:01:04.256+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T12:01:04.273+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041]
+time=2026-02-18T12:01:04.273+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T12:01:04.454+08:00 level=INFO msg="room went LIVE" room=14988041 title=正在调试
+time=2026-02-18T12:01:04.454+08:00 level=INFO msg="🎙️ room went live, starting pipeline" name="Test Stream" room=14988041 title=正在调试
+time=2026-02-18T12:01:04.531+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
+time=2026-02-18T12:01:04.532+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/981622/live_295893148_2747772.flv
+time=2026-02-18T12:02:53.524+08:00 level=INFO msg="STT final" text="欲しがった思いが ただ ただ 君にあるから。" lang=ja-jp confidence=0.635574221611023
+time=2026-02-18T12:02:53.524+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.635574221611023 len=22 musicScore=0.78 text="欲しがった思いが ただ ただ 君にあるから。"
+time=2026-02-18T12:02:54.256+08:00 level=INFO msg="📝 translated" worker=1 name="Test Stream" src="欲しがった思いが ただ ただ 君にあるから。" dst=我只是太想你了。
+time=2026-02-18T12:02:54.256+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=0 text=我只是太想你了。
+time=2026-02-18T12:02:54.380+08:00 level=INFO msg="STT final" text=" これさぁ！" lang=ja-jp confidence=0.446491003036499
+time=2026-02-18T12:02:54.380+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.446491003036499 len=6 musicScore=0.52 text=" これさぁ！"
+time=2026-02-18T12:02:54.413+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【我只是太想你了。】
+time=2026-02-18T12:02:54.631+08:00 level=INFO msg="STT final" text=" 楽しいかい？" lang=ja-jp confidence=0.5206827521324158
+time=2026-02-18T12:02:54.631+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.5206827521324158 len=7 musicScore=0.52 text=" 楽しいかい？"
+time=2026-02-18T12:02:55.109+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src=" これさぁ！" dst=这个啊！
+time=2026-02-18T12:02:55.109+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=1 text=这个啊！
+time=2026-02-18T12:02:55.440+08:00 level=INFO msg="📝 translated" worker=2 name="Test Stream" src=" 楽しいかい？" dst=开心吗？
+time=2026-02-18T12:02:56.384+08:00 level=INFO msg="STT final" text=毎回違うんだけど、同じように歌えないんだけど大丈夫そう？毎回違うのでいいの？違うからいいの？違うからいいのであれば今後も歌うよ。 lang=ja-jp confidence=0.7949279546737671
+time=2026-02-18T12:02:56.384+08:00 level=INFO msg="🎵 singing mode ON" name="Test Stream" musicScore=0.92 len=64
+time=2026-02-18T12:02:56.384+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=singing text=毎回違うんだけど、同じように歌えないんだけど大丈夫そう？毎回違うのでいいの？違うからいいの？違うからいいのであれば今後も歌うよ。 len=64 musicScore=0.92 conf=0.7949279546737671
+time=2026-02-18T12:02:56.645+08:00 level=INFO msg="STT final" text=暑くなっちゃっ。 lang=ja-jp confidence=0.8671371340751648
+time=2026-02-18T12:02:56.645+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=singing text=暑くなっちゃっ。 len=8 musicScore=0.94 conf=0.8671371340751648
+time=2026-02-18T12:02:57.486+08:00 level=INFO msg="STT final" text=" た、さっきまで21°cだったのに私が配信始めてからこの部屋25になってる。" lang=ja-jp confidence=0.9234144687652588
+time=2026-02-18T12:02:57.487+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=singing text=" た、さっきまで21°cだったのに私が配信始めてからこの部屋25になってる。" len=38 musicScore=0.45 conf=0.9234144687652588
+time=2026-02-18T12:02:59.705+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【这个啊！】
+time=2026-02-18T12:02:59.705+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=2 text=开心吗？
+time=2026-02-18T12:03:02.800+08:00 level=INFO msg="STT final" text="オリジナルコンテンツ作るのすごいですね。違う 違う作らざるを得ないのよ。知らないから この曲 この曲 1ミリも知らないから、あのガイドメロディーで覚えてるの？" lang=ja-jp confidence=0.8837221264839172
+time=2026-02-18T12:03:02.800+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=singing text="オリジナルコンテンツ作るのすごいですね。違う 違う作らざるを得ないのよ。知らないから この曲 この曲 1ミリも知らないから、あのガイドメロディーで覚えてるの？" len=79 musicScore=0.66 conf=0.8837221264839172
+time=2026-02-18T12:03:03.704+08:00 level=INFO msg="STT final" text="ガイドメロディ 聞いて覚えてるの？" lang=ja-jp confidence=0.5718364715576172
+time=2026-02-18T12:03:03.704+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=singing text="ガイドメロディ 聞いて覚えてるの？" len=17 musicScore=0.87 conf=0.5718364715576172
+time=2026-02-18T12:03:04.858+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【开心吗？】
+time=2026-02-18T12:03:05.010+08:00 level=INFO msg="STT final" text="だから ガイドメロディーのなかった。やつはね。死ぬかと思った。" lang=ja-jp confidence=0.758648157119751
+time=2026-02-18T12:03:05.010+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=singing text="だから ガイドメロディーのなかった。やつはね。死ぬかと思った。" len=31 musicScore=0.96 conf=0.758648157119751
+time=2026-02-18T12:03:05.641+08:00 level=INFO msg="STT final" text=こんなにわからなかったっけ？って思っ。 lang=ja-jp confidence=0.6474636197090149
+time=2026-02-18T12:03:05.641+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=singing text=こんなにわからなかったっけ？って思っ。 len=19 musicScore=0.96 conf=0.6474636197090149
+time=2026-02-18T12:03:08.255+08:00 level=INFO msg="STT final" text=" て。" lang=ja-jp confidence=0.43186500668525696
+time=2026-02-18T12:03:08.256+08:00 level=INFO msg="🎤 singing mode OFF" name="Test Stream" curLen=3 prevLen=19
+time=2026-02-18T12:03:08.256+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.43186500668525696 len=3 musicScore=0.81 text=" て。"
+time=2026-02-18T12:03:09.012+08:00 level=INFO msg="📝 translated" worker=1 name="Test Stream" src=" て。" dst=那个。
+time=2026-02-18T12:03:09.012+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=3 text=那个。
+time=2026-02-18T12:03:10.028+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【那个。】
+time=2026-02-18T12:03:11.403+08:00 level=INFO msg="STT final" text=" 踊り子、踊り子" lang=ja-jp confidence=0.5964604616165161
+time=2026-02-18T12:03:11.403+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.5964604616165161 len=8 musicScore=0.64 text=" 踊り子、踊り子"
+time=2026-02-18T12:03:13.223+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src=" 踊り子、踊り子" dst=舞娘，舞娘
+time=2026-02-18T12:03:13.223+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=4 text=舞娘，舞娘
+time=2026-02-18T12:03:15.253+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【舞娘，舞娘】
+time=2026-02-18T12:03:17.710+08:00 level=INFO msg="STT final" text=" 次 踊り子ね。ok 踊り子" lang=ja-jp confidence=0.5391795039176941
+time=2026-02-18T12:03:17.710+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.5391795039176941 len=14 musicScore=0.96 text=" 次 踊り子ね。ok 踊り子"
+time=2026-02-18T12:03:18.556+08:00 level=INFO msg="📝 translated" worker=2 name="Test Stream" src=" 次 踊り子ね。ok 踊り子" dst=下一个是舞娘。好的，舞娘。
+time=2026-02-18T12:03:18.556+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=5 text=下一个是舞娘。好的，舞娘。
+time=2026-02-18T12:03:20.486+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【下一个是舞娘。好的，舞娘。】
+time=2026-02-18T12:03:21.970+08:00 level=INFO msg="STT final" text=" 行きましょう。" lang=ja-jp confidence=0.31760403513908386
+time=2026-02-18T12:03:21.970+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.31760403513908386 len=8 musicScore=0.96 text=" 行きましょう。"
+time=2026-02-18T12:03:22.710+08:00 level=INFO msg="📝 translated" worker=1 name="Test Stream" src=" 行きましょう。" dst=走吧！
+time=2026-02-18T12:03:22.710+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=6 text=走吧！
+time=2026-02-18T12:03:25.664+08:00 level=INFO msg="danmaku sent" room=14988041 msg=【走吧！】
+time=2026-02-18T12:03:27.318+08:00 level=INFO msg="STT final" text=" vaundy 万里 好きよ！" lang=ja-jp confidence=0.7498352527618408
+time=2026-02-18T12:03:27.318+08:00 level=INFO msg="📊 dispatch" name="Test Stream" conf=0.7498352527618408 len=15 musicScore=0.50 text=" vaundy 万里 好きよ！"
+time=2026-02-18T12:03:27.946+08:00 level=INFO msg="📝 translated" worker=0 name="Test Stream" src=" vaundy 万里 好きよ！" dst="Vaundy 的万里，我喜欢！"
+time=2026-02-18T12:03:27.946+08:00 level=INFO msg="📝 sending" name="Test Stream" seq=7 text="Vaundy 的万里，我喜欢！"
+time=2026-02-18T12:03:30.843+08:00 level=INFO msg="danmaku sent" room=14988041 msg="【Vaundy 的万里，我喜欢！】"
+time=2026-02-18T12:03:36.489+08:00 level=INFO msg="STT final" text="ランチャー vaundyさん好きですよ。この前 ね。u-nextでなんか？無料で視聴できる？ライブやってて。" lang=ja-jp confidence=0.8824039697647095
+time=2026-02-18T12:03:36.489+08:00 level=INFO msg="🎵 singing mode ON" name="Test Stream" musicScore=0.81 len=54
+time=2026-02-18T12:03:36.489+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=singing text="ランチャー vaundyさん好きですよ。この前 ね。u-nextでなんか？無料で視聴できる？ライブやってて。" len=54 musicScore=0.81 conf=0.8824039697647095
+time=2026-02-18T12:03:41.176+08:00 level=INFO msg="STT final" text=" 甘んじてみました。無料で見れるんだったらと。" lang=ja-jp confidence=0.9662820100784302
+time=2026-02-18T12:03:41.176+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=singing text=" 甘んじてみました。無料で見れるんだったらと。" len=23 musicScore=0.85 conf=0.9662820100784302
+time=2026-02-18T12:03:47.647+08:00 level=INFO msg="STT final" text=いや、かっこいいわ。あれぐらい歌う？まかったらほんと楽しいでしょう。 lang=ja-jp confidence=0.8354992866516113
+time=2026-02-18T12:03:47.647+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=singing text=いや、かっこいいわ。あれぐらい歌う？まかったらほんと楽しいでしょう。 len=34 musicScore=0.52 conf=0.8354992866516113
+time=2026-02-18T12:04:02.282+08:00 level=INFO msg="STT final" text="じゃあ 踊り子" lang=ja-jp confidence=0.5898092985153198
+time=2026-02-18T12:04:02.282+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=singing text="じゃあ 踊り子" len=7 musicScore=0.68 conf=0.5898092985153198
+time=2026-02-18T12:04:04.355+08:00 level=INFO msg="room went OFFLINE" room=14988041
+time=2026-02-18T12:04:04.355+08:00 level=INFO msg="📴 room went offline, stopping" room=14988041
+time=2026-02-18T12:04:04.355+08:00 level=ERROR msg="audio read error" err="read |0: file already closed"
+time=2026-02-18T12:04:04.359+08:00 level=INFO msg="audio capture stopped"
