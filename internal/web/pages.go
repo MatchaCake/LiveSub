@@ -107,6 +107,14 @@ const indexHTML = `<!DOCTYPE html>
   </div>
 </div>
 <div class="rooms" id="rooms"><div class="empty">加载中...</div></div>
+
+<div style="margin-top:30px;background:#16213e;border-radius:12px;padding:20px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <h2 style="font-size:18px;color:#e94560;margin:0;">📄 字幕记录</h2>
+    <button class="link-btn" onclick="loadTranscripts()">刷新</button>
+  </div>
+  <div id="transcripts" style="font-size:13px;color:#aaa;">点击刷新加载</div>
+</div>
 <script>
 let currentUser = null;
 
@@ -170,6 +178,27 @@ async function toggle(roomId) {
 async function switchAccount(roomId, index) {
   await fetch('/api/account?room=' + roomId + '&index=' + index);
   fetchRooms();
+}
+
+async function loadTranscripts() {
+  const res = await fetch('/api/transcripts');
+  const files = await res.json() || [];
+  const el = document.getElementById('transcripts');
+  if (files.length === 0) {
+    el.innerHTML = '<span style="color:#666;">暂无字幕记录</span>';
+    return;
+  }
+  el.innerHTML = '<table style="width:100%;border-collapse:collapse;">' +
+    '<tr style="color:#aaa;font-size:12px;"><th style="text-align:left;padding:6px;">文件名</th><th style="text-align:right;padding:6px;">大小</th><th style="text-align:right;padding:6px;">时间</th><th></th></tr>' +
+    files.map(f => {
+      const size = f.size < 1024 ? f.size + ' B' : (f.size/1024).toFixed(1) + ' KB';
+      return '<tr style="border-top:1px solid #0f3460;">' +
+        '<td style="padding:6px;font-size:13px;">' + f.name + '</td>' +
+        '<td style="padding:6px;text-align:right;color:#666;font-size:12px;">' + size + '</td>' +
+        '<td style="padding:6px;text-align:right;color:#666;font-size:12px;">' + f.mod_time + '</td>' +
+        '<td style="padding:6px;text-align:right;"><a href="/api/transcripts/download?file=' + encodeURIComponent(f.name) + '" style="color:#4ecca3;text-decoration:none;font-size:13px;">⬇ 下载</a></td>' +
+      '</tr>';
+    }).join('') + '</table>';
 }
 
 init();
