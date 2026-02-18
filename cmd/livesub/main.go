@@ -11,7 +11,10 @@ import (
 	"syscall"
 	"time"
 
+	"path/filepath"
+
 	"github.com/christian-lee/livesub/internal/audio"
+	"github.com/christian-lee/livesub/internal/auth"
 	"github.com/christian-lee/livesub/internal/config"
 	"github.com/christian-lee/livesub/internal/danmaku"
 	"github.com/christian-lee/livesub/internal/monitor"
@@ -101,12 +104,27 @@ func run(cfgPath string) error {
 		rc.Register(sc.RoomID, sc.Name)
 	}
 
+	// Init SQLite auth store
+	dbPath := filepath.Join(filepath.Dir(cfgPath), "users.db")
+	authStore, err := auth.NewStore(dbPath)
+	if err != nil {
+		return fmt.Errorf("init auth store: %w", err)
+	}
+	defer authStore.Close()
+
+	// Ensure admin from config
+	if cfg.Auth.Username != "" && cfg.Auth.Password != "" {
+		if err := authStore.EnsureAdmin(cfg.Auth.Username, cfg.Auth.Password); err != nil {
+			slog.Error("ensure admin failed", "err", err)
+		}
+	}
+
 	// Start web control panel
 	webPort := cfg.WebPort
 	if webPort == 0 {
 		webPort = 8899
 	}
-	webServer := web.NewServer(rc, webPort, cfg.Auth.Username, cfg.Auth.Password)
+	webServer := web.NewServer(rc, webPort, authStore)
 	webServer.Start()
 
 	// Monitor live status
@@ -119,7 +137,10 @@ func run(cfgPath string) error {
 
 	// Hot reload config
 	hotCfg.OnReload(func(newCfg *config.Config) {
-		webServer.UpdateAuth(newCfg.Auth.Username, newCfg.Auth.Password)
+		// Update admin credentials from config
+		if newCfg.Auth.Username != "" && newCfg.Auth.Password != "" {
+			authStore.EnsureAdmin(newCfg.Auth.Username, newCfg.Auth.Password)
+		}
 
 		// Build new room set
 		newRoomSet := make(map[int64]config.StreamConfig)

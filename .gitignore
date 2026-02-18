@@ -16,3 +16,6 @@ configs/*.json
 # OS
 .DS_Store
 logs/
+configs/users.db
+configs/users.db-shm
+configs/users.db-wal
