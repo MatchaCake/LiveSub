@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -9,59 +10,59 @@ import (
 )
 
 type Config struct {
-	Streamer    StreamerConfig    `yaml:"streamer"`
-	STT         STTConfig         `yaml:"stt"`
-	Translation TranslationConfig `yaml:"translation"`
-	Outputs     []OutputConfig    `yaml:"outputs"`
-	Bots        []BotConfig       `yaml:"bots"`
-	Web         WebConfig         `yaml:"web"`
+	Streamers   []StreamerConfig  `yaml:"streamers" json:"streamers"`
+	STT         STTConfig         `yaml:"stt" json:"stt"`
+	Translation TranslationConfig `yaml:"translation" json:"translation"`
+	Bots        []BotConfig       `yaml:"bots" json:"bots"`
+	Web         WebConfig         `yaml:"web" json:"web"`
 }
 
 type StreamerConfig struct {
-	Name       string   `yaml:"name" json:"name"`
-	RoomID     int64    `yaml:"room_id" json:"room_id"`
-	SourceLang string   `yaml:"source_lang" json:"source_lang"` // primary STT language (e.g. "ja-JP")
-	AltLangs   []string `yaml:"alt_langs" json:"alt_langs"`     // additional detection languages
+	Name       string         `yaml:"name" json:"name"`
+	RoomID     int64          `yaml:"room_id" json:"room_id"`
+	SourceLang string         `yaml:"source_lang" json:"source_lang"`
+	AltLangs   []string       `yaml:"alt_langs" json:"alt_langs"`
+	Outputs    []OutputConfig `yaml:"outputs" json:"outputs"`
 }
 
 type STTConfig struct {
-	Provider    string `yaml:"provider"`    // "google"
-	Credentials string `yaml:"credentials"` // path to service account JSON
+	Provider    string `yaml:"provider" json:"provider"`
+	Credentials string `yaml:"credentials" json:"credentials"`
 }
 
 type TranslationConfig struct {
-	Provider string `yaml:"provider"` // "gemini"
-	APIKey   string `yaml:"api_key"`
-	Model    string `yaml:"model"` // e.g. "gemini-2.0-flash"
+	Provider string `yaml:"provider" json:"provider"`
+	APIKey   string `yaml:"api_key" json:"api_key"`
+	Model    string `yaml:"model" json:"model"`
 }
 
 type OutputConfig struct {
 	Name       string `yaml:"name" json:"name"`
-	Platform   string `yaml:"platform" json:"platform"`          // "bilibili"
-	TargetLang string `yaml:"target_lang" json:"target_lang"`    // empty = send source text (no translation)
-	Account    string `yaml:"account" json:"account"`            // bot name reference
-	RoomID     int64  `yaml:"room_id" json:"room_id"`            // 0 = use streamer's room_id
+	Platform   string `yaml:"platform" json:"platform"`
+	TargetLang string `yaml:"target_lang" json:"target_lang"`
+	Account    string `yaml:"account" json:"account"`
+	RoomID     int64  `yaml:"room_id" json:"room_id"`
 	Prefix     string `yaml:"prefix" json:"prefix"`
 	Suffix     string `yaml:"suffix" json:"suffix"`
 }
 
 type BotConfig struct {
-	Name       string `yaml:"name"`
-	Platform   string `yaml:"platform"` // "bilibili"
-	SESSDATA   string `yaml:"sessdata"`
-	BiliJCT    string `yaml:"bili_jct"`
-	UID        int64  `yaml:"uid"`
-	DanmakuMax int    `yaml:"danmaku_max"`
+	Name       string `yaml:"name" json:"name"`
+	Platform   string `yaml:"platform" json:"platform"`
+	SESSDATA   string `yaml:"sessdata" json:"sessdata"`
+	BiliJCT    string `yaml:"bili_jct" json:"bili_jct"`
+	UID        int64  `yaml:"uid" json:"uid"`
+	DanmakuMax int    `yaml:"danmaku_max" json:"danmaku_max"`
 }
 
 type WebConfig struct {
-	Port int        `yaml:"port"`
-	Auth AuthConfig `yaml:"auth"`
+	Port int        `yaml:"port" json:"port"`
+	Auth AuthConfig `yaml:"auth" json:"auth"`
 }
 
 type AuthConfig struct {
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
+	Username string `yaml:"username" json:"username"`
+	Password string `yaml:"password" json:"password"`
 }
 
 func Load(path string) (*Config, error) {
@@ -78,10 +79,6 @@ func Load(path string) (*Config, error) {
 			Provider: "gemini",
 			Model:    "gemini-2.0-flash",
 		},
-		Streamer: StreamerConfig{
-			SourceLang: "ja-JP",
-			AltLangs:   []string{"en-US"},
-		},
 		Web: WebConfig{
 			Port: 8899,
 		},
@@ -89,6 +86,19 @@ func Load(path string) (*Config, error) {
 
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
+	}
+
+	// Auto-migrate old single-streamer format
+	if len(cfg.Streamers) == 0 {
+		migrated := migrateOldFormat(data)
+		if migrated != nil {
+			cfg.Streamers = []StreamerConfig{*migrated}
+			slog.Info("migrated old config format to multi-streamer", "streamer", migrated.Name)
+			// Save in new format
+			if err := Save(path, cfg); err != nil {
+				slog.Warn("failed to save migrated config", "err", err)
+			}
+		}
 	}
 
 	// Resolve credentials path relative to config file directory
@@ -102,10 +112,19 @@ func Load(path string) (*Config, error) {
 		os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", cfg.STT.Credentials)
 	}
 
-	// Default output platform
-	for i := range cfg.Outputs {
-		if cfg.Outputs[i].Platform == "" {
-			cfg.Outputs[i].Platform = "bilibili"
+	// Defaults for streamers and their outputs
+	for i := range cfg.Streamers {
+		s := &cfg.Streamers[i]
+		if s.SourceLang == "" {
+			s.SourceLang = "ja-JP"
+		}
+		if s.AltLangs == nil {
+			s.AltLangs = []string{"en-US"}
+		}
+		for j := range s.Outputs {
+			if s.Outputs[j].Platform == "" {
+				s.Outputs[j].Platform = "bilibili"
+			}
 		}
 	}
 
@@ -122,6 +141,33 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
+// migrateOldFormat attempts to parse the old single-streamer config format
+// (with top-level "streamer" and "outputs" keys) and convert it.
+func migrateOldFormat(data []byte) *StreamerConfig {
+	var old struct {
+		Streamer struct {
+			Name       string   `yaml:"name"`
+			RoomID     int64    `yaml:"room_id"`
+			SourceLang string   `yaml:"source_lang"`
+			AltLangs   []string `yaml:"alt_langs"`
+		} `yaml:"streamer"`
+		Outputs []OutputConfig `yaml:"outputs"`
+	}
+	if err := yaml.Unmarshal(data, &old); err != nil {
+		return nil
+	}
+	if old.Streamer.RoomID == 0 {
+		return nil
+	}
+	return &StreamerConfig{
+		Name:       old.Streamer.Name,
+		RoomID:     old.Streamer.RoomID,
+		SourceLang: old.Streamer.SourceLang,
+		AltLangs:   old.Streamer.AltLangs,
+		Outputs:    old.Outputs,
+	}
+}
+
 // Save writes the config back to the given path.
 func Save(path string, cfg *Config) error {
 	data, err := yaml.Marshal(cfg)
@@ -130,6 +176,37 @@ func Save(path string, cfg *Config) error {
 	}
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("write config: %w", err)
+	}
+	return nil
+}
+
+// RoomIDs returns all streamer room IDs.
+func (c *Config) RoomIDs() []int64 {
+	ids := make([]int64, 0, len(c.Streamers))
+	for _, s := range c.Streamers {
+		if s.RoomID != 0 {
+			ids = append(ids, s.RoomID)
+		}
+	}
+	return ids
+}
+
+// FindStreamer returns the streamer config for the given name.
+func (c *Config) FindStreamer(name string) *StreamerConfig {
+	for i := range c.Streamers {
+		if c.Streamers[i].Name == name {
+			return &c.Streamers[i]
+		}
+	}
+	return nil
+}
+
+// FindStreamerByRoom returns the streamer config for the given room ID.
+func (c *Config) FindStreamerByRoom(roomID int64) *StreamerConfig {
+	for i := range c.Streamers {
+		if c.Streamers[i].RoomID == roomID {
+			return &c.Streamers[i]
+		}
 	}
 	return nil
 }
