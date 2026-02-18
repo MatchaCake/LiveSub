@@ -16,6 +16,7 @@ Real-time live stream translator — captures audio, transcribes with Google STT
 - **Transcript logging** — CSV logs per session (time, source text, translation) with download
 - **Audit log** — Track all user actions (login, toggle, account switch, admin operations)
 - **Hot reload** — Config changes apply without restart (streams, accounts, auth)
+- **i18n** — Web UI supports Chinese, English, Japanese with one-click language switch
 - **Language detection** — Skips translation if speech is already in target language
 
 ## Architecture
