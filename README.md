@@ -4,14 +4,19 @@ Real-time live stream translator — captures audio, transcribes with Google STT
 
 ## Features
 
-- **Auto stream capture** — Fetches stream URL directly via Bilibili API, decoded by ffmpeg
-- **Multi-stream** — Translate N live rooms simultaneously (goroutines)
-- **Live detection** — Monitors Bilibili room status (30s polling), auto-starts/stops pipelines
-- **Real-time STT** — Google Cloud Speech-to-Text streaming with auto-reconnect on 305s limit
+- **Multi-stream** — Translate N live rooms simultaneously with shared worker pool
+- **Live detection** — Auto-starts/stops translation when streamers go live (30s polling)
+- **Real-time STT** — Google Cloud Speech-to-Text streaming with auto-reconnect & exponential backoff
 - **AI translation** — Gemini Flash for fast, context-aware translation
-- **Shared worker pool** — N×3 translation workers across all streams, parallel translate with ordered send
 - **Singing detection** — FFT spectral analysis + text length heuristic to skip BGM/lyrics
-- **Danmaku output** — Bilibili live chat with auto-split for long messages, rejected message logging
+- **Multi-account danmaku** — Multiple Bilibili accounts for sending, switch per-room
+- **Web control panel** — Pause/resume translation, manage accounts, download transcripts
+- **User management** — SQLite-backed auth with admin/user roles, per-room permissions
+- **QR code login** — Add Bilibili accounts by scanning QR code in the web UI
+- **Stream management** — Add/remove streams from web UI (auto-extract room ID from URL)
+- **Transcript logging** — CSV logs per session (time, source text, translation) with download
+- **Audit log** — Track all user actions (login, toggle, account switch, admin operations)
+- **Hot reload** — Config changes apply without restart (streams, accounts, auth)
 - **Language detection** — Skips translation if speech is already in target language
 
 ## Architecture
@@ -26,43 +31,42 @@ Real-time live stream translator — captures audio, transcribes with Google STT
                                         │          ┌───────▼────────┐     │
                                         └──────────│ Singing Filter │     │
                                                    └───────┬────────┘     │
-                                                           │              │
                                               Shared Translation Pool     │
                                               (N×3 Gemini workers)        │
                                                            │              │
-                                                   Ordered Sender ──→ Danmaku API
-                                                   (per-stream seq)       │
+                                              ┌────────────┤              │
+                                              ▼            ▼              │
+                                        Transcript    Ordered Sender      │
+                                        (CSV log)    ──→ Danmaku API      │
                     └──────────────────────────────────────────────────────┘
+
+  Web Control Panel (:8899)
+  ├── 🎙️ Room cards (live status, pause/resume, account switch)
+  ├── 📄 Transcript download (per-user permission)
+  ├── ⚙️ Admin panel
+  │   ├── 📺 Stream management (add/delete rooms)
+  │   ├── 🎮 Bilibili accounts (QR login, danmaku_max)
+  │   ├── 👥 User management (roles, room/account assignment)
+  │   └── 📋 Audit log
+  └── 🔐 SQLite auth (bcrypt, sessions)
 ```
-
-**Key design:**
-- Stream URL fetched directly from Bilibili API (no browser needed)
-- ffmpeg decodes FLV→PCM s16le 16kHz mono
-- `AnalyzingReader` taps PCM for FFT music detection while passing through to STT
-- Translation workers shared across all streams for load balancing (peak shaving)
-- Each stream maintains its own ordered sender to preserve subtitle sequence
-
-## Singing Detection
-
-3 features via FFT spectral analysis (every 200ms):
-1. **Low frequency energy ratio** (40%) — BGM has bass/drums in 0-300Hz
-2. **Spectral flatness** (35%) — Music spreads evenly across frequencies
-3. **Energy spread** (25%) — Music covers full spectrum beyond voice band
-
-Fallback: consecutive long text (>50 chars) detected as lyrics.
 
 ## Prerequisites
 
 - Linux with ffmpeg
 - Google Cloud service account with Speech-to-Text API enabled
 - Gemini API key
-- Bilibili account cookies (SESSDATA + bili_jct)
+- Bilibili account cookies (SESSDATA + bili_jct) — or add via web UI QR login
 
 ## Config
 
 ```yaml
+auth:
+  username: "admin"        # Web UI admin account
+  password: "your-password"
+
 google:
-  credentials: "configs/google-credentials.json"
+  credentials: "google-credentials.json"
 
 gemini:
   api_key: "your-gemini-api-key"
@@ -70,10 +74,11 @@ gemini:
   target_lang: "zh-CN"
 
 bilibili:
-  sessdata: "your-sessdata-cookie"
+  sessdata: "your-sessdata"    # Fallback default account
   bili_jct: "your-csrf-token"
-  danmaku_max: 30              # max chars per danmaku (20=default, 30=UL20+)
+  danmaku_max: 30              # 20=default, 30=UL20+
 
+# Config streams (can also add via web UI)
 streams:
   - name: "VTuber A"
     room_id: 12345
@@ -81,9 +86,13 @@ streams:
   - name: "Streamer B"
     room_id: 67890
     source_lang: "en-US"
-    alt_langs: ["ja-JP"]       # additional languages to detect
-    target_lang: "en-US"       # per-stream override
+
+web_port: 8899  # optional, default 8899
 ```
+
+Additional Bilibili accounts can be added via the web UI (📱 QR code login) instead of the config file.
+
+Streams can also be added/removed from the admin panel — just paste the Bilibili live URL.
 
 ## Usage
 
@@ -91,14 +100,11 @@ streams:
 # Build
 go build -o livesub ./cmd/livesub
 
-# Start monitoring & translating
+# Start
 livesub run configs/config.yaml
 ```
 
-LiveSub will:
-1. Poll configured rooms for live status (every 30s)
-2. When a room goes live → fetch stream URL → ffmpeg capture → STT → translate → danmaku
-3. When a room goes offline → stop pipeline → wait for next live
+Open `http://localhost:8899` for the control panel.
 
 ### Systemd
 
@@ -107,21 +113,83 @@ sudo cp livesub.service /etc/systemd/system/
 sudo systemctl enable --now livesub
 ```
 
+## Web UI
+
+### Control Panel
+- View all rooms with live status
+- Pause/resume translation per room
+- Switch danmaku account per room
+- Download transcript CSVs
+
+### Admin Panel (`/admin`)
+- **📺 Stream management** — Add rooms by URL or room number, delete any stream
+- **🎮 B站账号** — QR code login to add accounts, set per-account danmaku length limit
+- **👥 User management** — Create users, assign rooms & accounts, role-based access
+- **📋 Audit log** — View all user actions with timestamps and IPs
+
+### Permissions
+| Role | Rooms | Accounts | Transcripts | Admin Panel |
+|------|-------|----------|-------------|-------------|
+| Admin | All | All | All | ✅ |
+| User | Assigned only | Assigned only | Assigned rooms | ❌ |
+
+## Transcripts
+
+Each live session generates a CSV file:
+```
+transcripts/<room_id>_<name>_<YYYYMMDD>_<HHMMSS>.csv
+```
+
+Format (UTF-8 with BOM for Excel compatibility):
+```csv
+时间,原文,翻译
+14:30:05,こんにちは,大家好
+14:30:12,今日は天気がいいですね,今天天气真好呢
+```
+
+Transcripts are recorded continuously even when danmaku sending is paused.
+
+## Data Storage
+
+```
+configs/
+├── config.yaml          # Main configuration
+├── google-credentials.json
+├── users.db             # SQLite (users, accounts, streams, audit log)
+└── transcripts/         # CSV transcript files
+```
+
 ## Project Structure
 
 ```
-cmd/livesub/           CLI entrypoint + pipeline orchestration
+cmd/livesub/             CLI + pipeline orchestration
 internal/
   audio/
-    capture.go         ffmpeg PCM capture from stream URL
-    analyzer.go        FFT-based music detection (Cooley-Tukey radix-2)
-    tee_reader.go      Transparent PCM tap for analysis
-    stream_url.go      Bilibili stream URL fetcher
-  config/              YAML config loader with defaults
-  danmaku/             Bilibili danmaku sender (rate-limited, auto-split)
-  monitor/             Bilibili live status poller
-  stt/                 Google Cloud STT streaming client
-  translate/           Gemini translation client
+    capture.go           ffmpeg PCM capture
+    analyzer.go          FFT music detection (Cooley-Tukey radix-2)
+    tee_reader.go        PCM tap for analysis
+    stream_url.go        Bilibili stream URL fetcher
+    pausable_reader.go   Discard audio when paused
+  auth/
+    store.go             SQLite user/session management
+    bilibili.go          QR login + account management
+    streams.go           Stream DB management
+  config/
+    config.go            YAML config with defaults
+    watcher.go           fsnotify hot reload
+  danmaku/
+    bilibili.go          Multi-account sender (rate-limited, auto-split)
+  monitor/
+    bilibili.go          Live status poller (thread-safe)
+  stt/
+    google.go            Google STT streaming (auto-reconnect, backoff)
+  transcript/
+    logger.go            CSV transcript writer
+  translate/
+    gemini.go            Gemini translation client
+  web/
+    server.go            HTTP handlers, auth, room control
+    pages.go             HTML templates (login, control panel, admin)
 ```
 
 ## Cost
