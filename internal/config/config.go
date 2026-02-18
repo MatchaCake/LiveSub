@@ -15,8 +15,9 @@ type Config struct {
 }
 
 type GoogleConfig struct {
-	Credentials string `yaml:"credentials"` // path to service account JSON
-	STTLanguage string `yaml:"stt_language"` // default source language
+	Credentials string   `yaml:"credentials"`   // path to service account JSON
+	STTLanguage string   `yaml:"stt_language"`   // primary language
+	AltLangs    []string `yaml:"alt_langs"`      // additional languages for auto-detection
 }
 
 type GeminiConfig struct {
@@ -53,6 +54,7 @@ func Load(path string) (*Config, error) {
 		},
 		Google: GoogleConfig{
 			STTLanguage: "ja-JP",
+			AltLangs:    []string{"en-US", "zh"},
 		},
 	}
 
@@ -64,6 +66,9 @@ func Load(path string) (*Config, error) {
 	for i := range cfg.Streams {
 		if cfg.Streams[i].SourceLang == "" {
 			cfg.Streams[i].SourceLang = cfg.Google.STTLanguage
+		}
+		if len(cfg.Streams[i].AltLangs) == 0 {
+			cfg.Streams[i].AltLangs = cfg.Google.AltLangs
 		}
 		if cfg.Streams[i].TargetLang == "" {
 			cfg.Streams[i].TargetLang = cfg.Gemini.TargetLang
