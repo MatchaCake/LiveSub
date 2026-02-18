@@ -140,6 +140,7 @@ func (s *Server) Start() {
 	mux.HandleFunc("/api/transcripts/download", s.requireAuth(s.handleTranscriptDownload))
 	mux.HandleFunc("/api/my/streamer-outputs", s.requireAuth(s.handleMyStreamerOutputs))
 	mux.HandleFunc("/api/my/accounts", s.requireAuth(s.handleMyAccounts))
+	mux.HandleFunc("/settings", s.requireAuth(s.handleSettingsPage))
 
 	// Admin only
 	mux.HandleFunc("/admin", s.requireAdmin(s.handleAdminPage))
@@ -1113,6 +1114,11 @@ func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, indexHTML)
+}
+
+func (s *Server) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, settingsHTML)
 }
 
 func (s *Server) handleAdminPage(w http.ResponseWriter, r *http.Request) {

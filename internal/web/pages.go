@@ -110,7 +110,8 @@ const indexHTML = `<!DOCTYPE html>
   <div class="header-right">
     <div id="langSwitcherSlot"></div>
     <span id="userInfo"></span>
-    <a href="/admin" class="link-btn" id="adminLink" style="display:none" data-i18n="admin">⚙️ 管理</a>
+    <a href="/settings" class="link-btn" data-i18n="settings">⚙️ 设置</a>
+    <a href="/admin" class="link-btn" id="adminLink" style="display:none" data-i18n="admin">🔧 管理</a>
     <a href="/api/logout" class="link-btn" data-i18n="logout">退出登录</a>
   </div>
 </div>
@@ -234,28 +235,6 @@ function renderStatus(data) {
       });
     }
     card.appendChild(outputsDiv);
-
-    // Output management toggle
-    var mgmtBtn = document.createElement('button');
-    mgmtBtn.className = 'link-btn';
-    mgmtBtn.style.cssText = 'margin-top:12px;font-size:12px;';
-    mgmtBtn.textContent = '⚙️ ' + t('manage_outputs');
-    mgmtBtn.setAttribute('data-streamer', s.name);
-    var mgmtPanel = document.createElement('div');
-    mgmtPanel.style.display = 'none';
-    mgmtPanel.className = 'output-mgmt';
-    mgmtBtn.onclick = function() {
-      var panel = this.nextElementSibling;
-      if (panel.style.display === 'none') {
-        panel.style.display = '';
-        loadMyOutputs(s.name, panel);
-      } else {
-        panel.style.display = 'none';
-      }
-    };
-    card.appendChild(mgmtBtn);
-    card.appendChild(mgmtPanel);
-
     el.appendChild(card);
   });
 }
@@ -263,89 +242,6 @@ function renderStatus(data) {
 async function toggle(streamerName, outputName) {
   await fetch('/api/toggle?streamer=' + encodeURIComponent(streamerName) + '&output=' + encodeURIComponent(outputName));
   fetchStatus();
-}
-
-var myAccounts = null;
-async function ensureMyAccounts() {
-  if (myAccounts !== null) return;
-  var res = await fetch('/api/my/accounts');
-  myAccounts = await res.json() || [];
-}
-
-async function loadMyOutputs(streamerName, panel) {
-  await ensureMyAccounts();
-  var res = await fetch('/api/my/streamer-outputs?streamer=' + encodeURIComponent(streamerName));
-  var outputs = await res.json() || [];
-  panel.innerHTML = '';
-
-  var style = 'background:#0d1b3e;border-radius:8px;padding:12px;margin-top:10px;';
-  panel.style.cssText += style;
-
-  // List existing outputs
-  outputs.forEach(function(o) {
-    var row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;';
-    row.innerHTML = '<span style="color:#eee;min-width:80px;">' + escapeHTML(o.name) + '</span>' +
-      '<span style="color:#888;">' + escapeHTML(o.target_lang || '原文') + '</span>' +
-      '<span style="color:#888;">' + escapeHTML(o.account || '') + '</span>';
-    var delBtn = document.createElement('button');
-    delBtn.style.cssText = 'margin-left:auto;padding:2px 8px;border:1px solid #555;border-radius:4px;background:transparent;color:#e94560;cursor:pointer;font-size:11px;';
-    delBtn.textContent = '✕';
-    delBtn.onclick = async function() {
-      if (!confirm(t('confirm_del_output') + ' ' + o.name + '?')) return;
-      await fetch('/api/my/streamer-outputs?streamer=' + encodeURIComponent(streamerName) + '&name=' + encodeURIComponent(o.name), {method:'DELETE'});
-      loadMyOutputs(streamerName, panel);
-      fetchStatus();
-    };
-    row.appendChild(delBtn);
-    panel.appendChild(row);
-  });
-
-  // Add form
-  var form = document.createElement('div');
-  form.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;';
-  var inputStyle = 'padding:5px 8px;border:1px solid #333;border-radius:4px;background:#0f3460;color:#eee;font-size:12px;';
-
-  form.innerHTML = '<input type="text" placeholder="' + t('name') + '" style="' + inputStyle + 'width:80px;" class="mo-name">' +
-    '<select style="' + inputStyle + '" class="mo-lang">' +
-      '<option value="">(原文)</option><option value="zh">中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option>' +
-    '</select>' +
-    '<select style="' + inputStyle + '" class="mo-acct">' +
-      '<option value="">(' + t('select_account') + ')</option>' +
-      myAccounts.map(function(a) { return '<option value="' + escapeHTML(a) + '">' + escapeHTML(a) + '</option>'; }).join('') +
-    '</select>' +
-    '<input type="text" placeholder="前缀" style="' + inputStyle + 'width:50px;" class="mo-prefix">' +
-    '<input type="text" placeholder="后缀" style="' + inputStyle + 'width:50px;" class="mo-suffix">';
-
-  var addBtn = document.createElement('button');
-  addBtn.style.cssText = 'padding:5px 12px;border:none;border-radius:4px;background:#4ecca3;color:#000;cursor:pointer;font-size:12px;font-weight:bold;';
-  addBtn.textContent = '+';
-  addBtn.onclick = async function() {
-    var name = form.querySelector('.mo-name').value.trim();
-    if (!name) return;
-    var body = {
-      name: name,
-      platform: 'bilibili',
-      target_lang: form.querySelector('.mo-lang').value,
-      account: form.querySelector('.mo-acct').value,
-      room_id: 0,
-      prefix: form.querySelector('.mo-prefix').value,
-      suffix: form.querySelector('.mo-suffix').value
-    };
-    var r = await fetch('/api/my/streamer-outputs?streamer=' + encodeURIComponent(streamerName), {
-      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
-    });
-    if (r.ok) {
-      form.querySelector('.mo-name').value = '';
-      loadMyOutputs(streamerName, panel);
-      fetchStatus();
-    } else {
-      var d = await r.json();
-      alert(d.error || 'failed');
-    }
-  };
-  form.appendChild(addBtn);
-  panel.appendChild(form);
 }
 
 function onLangChange() { fetchStatus(); }
@@ -1090,6 +986,248 @@ async function loadAudit() {
     return [e.time, e.username, e.action, e.detail||'', e.ip||''];
   });
   container.appendChild(buildTable([t('log_time'), t('log_user'), t('log_action'), t('log_detail'), t('log_ip')], rows));
+}
+
+init();
+</script>
+</body>
+</html>`
+
+const settingsHTML = `<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveSub - ` + "设置" + `</title>
+` + faviconTag + `
+` + i18nScript + `
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; padding: 20px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 10px; }
+  h1 { font-size: 24px; color: #e94560; }
+  h2 { font-size: 18px; color: #e94560; margin-bottom: 15px; }
+  .link-btn { padding: 8px 16px; border: 1px solid #555; border-radius: 6px; background: transparent; color: #aaa; cursor: pointer; font-size: 13px; text-decoration: none; }
+  .link-btn:hover { border-color: #e94560; color: #e94560; }
+  .section { background: #16213e; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #0f3460; font-size: 14px; }
+  th { color: #aaa; font-weight: normal; font-size: 13px; }
+  .small-btn { padding: 5px 12px; border: 1px solid #555; border-radius: 4px; background: transparent; color: #aaa; cursor: pointer; font-size: 12px; }
+  .small-btn:hover { border-color: #e94560; color: #e94560; }
+  .small-btn.danger:hover { border-color: #ff4444; color: #ff4444; }
+  .form-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+  .form-row input, .form-row select { padding: 8px 12px; border: 1px solid #333; border-radius: 6px; background: #0f3460; color: #eee; font-size: 14px; outline: none; }
+  .form-row input:focus { border-color: #e94560; }
+  .add-btn { padding: 8px 20px; border: none; border-radius: 6px; background: #4ecca3; color: #000; cursor: pointer; font-size: 14px; font-weight: bold; }
+  .add-btn:hover { opacity: 0.9; }
+  .msg { padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 13px; display: none; }
+  .msg.ok { background: #1a3a2a; color: #4ecca3; display: block; }
+  .msg.err { background: #3a1a1a; color: #e94560; display: block; }
+  .streamer-tab { display: inline-block; padding: 8px 16px; border: 1px solid #333; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 14px; color: #aaa; background: transparent; margin-right: 4px; }
+  .streamer-tab.active { background: #16213e; color: #e94560; border-color: #e94560; border-bottom-color: #16213e; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div style="display:flex;align-items:center;gap:15px;">
+    <h1 data-i18n="settings">⚙️ 设置</h1>
+    <div id="langSwitcherSlot"></div>
+  </div>
+  <a href="/" class="link-btn" data-i18n="back">← 返回控制面板</a>
+</div>
+
+<div class="section">
+  <h2 data-i18n="manage_outputs">📤 输出管理</h2>
+  <div id="streamerTabs" style="margin-bottom:-1px;"></div>
+  <div id="outputsContent" style="border-top:1px solid #0f3460;padding-top:15px;"></div>
+  <div style="margin-top:15px;">
+    <h3 style="font-size:14px;color:#aaa;margin-bottom:10px;" data-i18n="add_output">➕ 添加/编辑输出</h3>
+    <div id="outputMsg" class="msg"></div>
+    <div class="form-row">
+      <input type="text" id="outName" placeholder="名称" style="width:120px;">
+      <select id="outPlatform"><option value="bilibili">bilibili</option></select>
+      <select id="outLang">
+        <option value="">(原文直传)</option>
+        <option value="zh">中文 (zh)</option>
+        <option value="en">English (en)</option>
+        <option value="ja">日本語 (ja)</option>
+        <option value="ko">한국어 (ko)</option>
+        <option value="fr">Français (fr)</option>
+        <option value="de">Deutsch (de)</option>
+        <option value="es">Español (es)</option>
+        <option value="ru">Русский (ru)</option>
+      </select>
+      <select id="outAccount"></select>
+    </div>
+    <div class="form-row">
+      <input type="number" id="outRoom" placeholder="房间号 (0=默认)" style="width:120px;">
+      <input type="text" id="outPrefix" placeholder="前缀" style="width:100px;">
+      <input type="text" id="outSuffix" placeholder="后缀" style="width:100px;">
+      <button class="add-btn" onclick="saveOutput()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('langSwitcherSlot').innerHTML = langSwitcher();
+
+var myStreamers = [];
+var myAccounts = [];
+var cachedOutputs = [];
+var currentStreamer = '';
+
+function escapeHTML(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function init() {
+  var meRes = await fetch('/api/me');
+  if (meRes.status === 401) { window.location.href = '/login'; return; }
+  var acctRes = await fetch('/api/my/accounts');
+  myAccounts = await acctRes.json() || [];
+  var statusRes = await fetch('/api/status');
+  var status = await statusRes.json();
+  myStreamers = status.streamers || [];
+  renderTabs();
+  renderAccountDropdown();
+  if (myStreamers.length > 0) {
+    currentStreamer = myStreamers[0].name;
+    selectTab(currentStreamer);
+  }
+}
+
+function renderTabs() {
+  var container = document.getElementById('streamerTabs');
+  container.innerHTML = '';
+  myStreamers.forEach(function(s) {
+    var tab = document.createElement('span');
+    tab.className = 'streamer-tab' + (s.name === currentStreamer ? ' active' : '');
+    tab.textContent = s.name + ' (#' + s.room_id + ')';
+    tab.setAttribute('data-name', s.name);
+    tab.onclick = function() { selectTab(this.getAttribute('data-name')); };
+    container.appendChild(tab);
+  });
+}
+
+function selectTab(name) {
+  currentStreamer = name;
+  document.querySelectorAll('.streamer-tab').forEach(function(t) {
+    t.className = 'streamer-tab' + (t.getAttribute('data-name') === name ? ' active' : '');
+  });
+  loadOutputs();
+}
+
+function renderAccountDropdown() {
+  var sel = document.getElementById('outAccount');
+  sel.innerHTML = '<option value="">(' + t('select_account') + ')</option>';
+  myAccounts.forEach(function(a) {
+    var opt = document.createElement('option');
+    opt.value = a;
+    opt.textContent = a;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadOutputs() {
+  if (!currentStreamer) return;
+  var res = await fetch('/api/my/streamer-outputs?streamer=' + encodeURIComponent(currentStreamer));
+  var outputs = await res.json() || [];
+  cachedOutputs = outputs;
+  var container = document.getElementById('outputsContent');
+  container.innerHTML = '';
+  if (outputs.length === 0) {
+    container.innerHTML = '<p style="text-align:center;color:#666;padding:15px;">' + t('no_streamer_outputs') + '</p>';
+    return;
+  }
+  var table = document.createElement('table');
+  var thead = document.createElement('thead');
+  var hr = document.createElement('tr');
+  [t('name'), t('platform'), t('target_lang'), t('account'), t('room_id'), t('prefix'), t('suffix'), t('actions')].forEach(function(h) {
+    var th = document.createElement('th'); th.textContent = h; hr.appendChild(th);
+  });
+  thead.appendChild(hr); table.appendChild(thead);
+  var tbody = document.createElement('tbody');
+  outputs.forEach(function(o) {
+    var tr = document.createElement('tr');
+    [o.name, o.platform||'bilibili', o.target_lang||'(原文)', o.account||'', String(o.room_id||0), o.prefix||'', o.suffix||''].forEach(function(v) {
+      var td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+    });
+    var actionTd = document.createElement('td');
+    var editBtn = document.createElement('button');
+    editBtn.className = 'small-btn'; editBtn.textContent = t('edit');
+    editBtn.setAttribute('data-name', o.name);
+    editBtn.onclick = function() { editOutput(this.getAttribute('data-name')); };
+    actionTd.appendChild(editBtn);
+    actionTd.appendChild(document.createTextNode(' '));
+    var delBtn = document.createElement('button');
+    delBtn.className = 'small-btn danger'; delBtn.textContent = t('delete');
+    delBtn.setAttribute('data-name', o.name);
+    delBtn.onclick = function() { deleteOutput(this.getAttribute('data-name')); };
+    actionTd.appendChild(delBtn);
+    tr.appendChild(actionTd);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody); container.appendChild(table);
+}
+
+async function saveOutput() {
+  if (!currentStreamer) { alert(t('select_streamer')); return; }
+  var name = document.getElementById('outName').value.trim();
+  var msgEl = document.getElementById('outputMsg');
+  if (!name) { msgEl.className = 'msg err'; msgEl.textContent = t('name_required'); return; }
+  var body = {
+    name: name, platform: document.getElementById('outPlatform').value,
+    target_lang: document.getElementById('outLang').value,
+    account: document.getElementById('outAccount').value,
+    room_id: parseInt(document.getElementById('outRoom').value) || 0,
+    prefix: document.getElementById('outPrefix').value,
+    suffix: document.getElementById('outSuffix').value
+  };
+  var res = await fetch('/api/my/streamer-outputs?streamer=' + encodeURIComponent(currentStreamer), {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+  });
+  if (res.ok) {
+    msgEl.className = 'msg ok'; msgEl.textContent = t('output_saved') + ': ' + name;
+    clearForm(); loadOutputs();
+  } else {
+    var data = await res.json();
+    msgEl.className = 'msg err'; msgEl.textContent = data.error || t('create_failed');
+  }
+}
+
+function editOutput(name) {
+  var o = cachedOutputs.find(function(x) { return x.name === name; });
+  if (!o) return;
+  document.getElementById('outName').value = o.name;
+  document.getElementById('outPlatform').value = o.platform || 'bilibili';
+  document.getElementById('outLang').value = o.target_lang || '';
+  var sel = document.getElementById('outAccount');
+  sel.value = o.account || '';
+  if (sel.value !== (o.account || '') && o.account) {
+    var opt = document.createElement('option'); opt.value = o.account; opt.textContent = o.account;
+    sel.appendChild(opt); sel.value = o.account;
+  }
+  document.getElementById('outRoom').value = o.room_id || 0;
+  document.getElementById('outPrefix').value = o.prefix || '';
+  document.getElementById('outSuffix').value = o.suffix || '';
+  document.getElementById('outName').scrollIntoView({behavior: 'smooth'});
+}
+
+async function deleteOutput(name) {
+  if (!confirm(t('confirm_del_output') + ' ' + name + '?')) return;
+  await fetch('/api/my/streamer-outputs?streamer=' + encodeURIComponent(currentStreamer) + '&name=' + encodeURIComponent(name), {method: 'DELETE'});
+  loadOutputs();
+}
+
+function clearForm() {
+  document.getElementById('outName').value = '';
+  document.getElementById('outLang').selectedIndex = 0;
+  document.getElementById('outAccount').selectedIndex = 0;
+  document.getElementById('outRoom').value = '';
+  document.getElementById('outPrefix').value = '';
+  document.getElementById('outSuffix').value = '';
 }
 
 init();
