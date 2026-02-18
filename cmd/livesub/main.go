@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	stream "github.com/MatchaCake/bilibili_stream_lib"
-	"github.com/christian-lee/livesub/internal/audio"
 	"github.com/christian-lee/livesub/internal/auth"
 	"github.com/christian-lee/livesub/internal/config"
 	"github.com/christian-lee/livesub/internal/danmaku"
@@ -149,14 +149,19 @@ func run(cfgPath string) error {
 	streamMap := mergeStreams()
 	active := make(map[int64]*activeStream)
 
+	// newSender creates a BilibiliSender from current config.
+	newSender := func(roomID int64) *danmaku.BilibiliSender {
+		c := hotCfg.Get()
+		s := danmaku.NewBilibiliSender(roomID, c.Bilibili.SESSDATA, c.Bilibili.BiliJCT, c.Bilibili.UID)
+		if c.Bilibili.DanmakuMax > 0 {
+			s.MaxLength = c.Bilibili.DanmakuMax
+		}
+		return s
+	}
+
 	for _, sc := range streamMap {
 		rc.Register(sc.RoomID, sc.Name)
-		// Create sender immediately so accounts are visible in web UI before stream goes live
-		sender := danmaku.NewBilibiliSender(sc.RoomID, cfg.Bilibili.SESSDATA, cfg.Bilibili.BiliJCT, cfg.Bilibili.UID)
-		if cfg.Bilibili.DanmakuMax > 0 {
-			sender.MaxLength = cfg.Bilibili.DanmakuMax
-		}
-		rc.SetSender(sc.RoomID, sender)
+		rc.SetSender(sc.RoomID, newSender(sc.RoomID))
 	}
 
 	// Start web control panel
@@ -231,13 +236,7 @@ func run(cfgPath string) error {
 			if _, exists := streamMap[id]; !exists {
 				addedIDs = append(addedIDs, id)
 				rc.Register(id, sc.Name)
-				// Create sender immediately for web UI account visibility
-				currentCfg := hotCfg.Get()
-				s := danmaku.NewBilibiliSender(id, currentCfg.Bilibili.SESSDATA, currentCfg.Bilibili.BiliJCT, currentCfg.Bilibili.UID)
-				if currentCfg.Bilibili.DanmakuMax > 0 {
-					s.MaxLength = currentCfg.Bilibili.DanmakuMax
-				}
-				rc.SetSender(id, s)
+				rc.SetSender(id, newSender(id))
 			}
 		}
 		streamMap = newStreamMap
@@ -307,7 +306,7 @@ func run(cfgPath string) error {
 				mu.Unlock()
 
 				go func(sc config.StreamConfig, streamCtx context.Context, streamCancel context.CancelFunc) {
-					if err := runStream(streamCtx, hotCfg.Get(), sc, translator, pool, rc, syncAccountsToSenders, transcriptBaseDir); err != nil {
+					if err := runStream(streamCtx, sc, translator, pool, rc, newSender, syncAccountsToSenders, transcriptBaseDir); err != nil {
 						slog.Error("stream ended", "name", sc.Name, "err", err)
 					}
 					streamCancel()
@@ -335,7 +334,7 @@ func run(cfgPath string) error {
 	return ctx.Err()
 }
 
-func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, translator *translate.GeminiTranslator, pool *translatePool, rc *web.RoomControl, syncAccounts func(), transcriptBaseDir string) error {
+func runStream(ctx context.Context, sc config.StreamConfig, translator *translate.GeminiTranslator, pool *translatePool, rc *web.RoomControl, newSender func(int64) *danmaku.BilibiliSender, syncAccounts func(), transcriptBaseDir string) error {
 	// 1. Get live stream URL
 	streamURL, err := stream.GetStreamURL(ctx, sc.RoomID)
 	if err != nil {
@@ -360,15 +359,9 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	// 4. Reuse existing sender (created at startup/stream-add, accounts already synced)
 	sender := rc.GetSender(sc.RoomID)
 	if sender == nil {
-		// Fallback: create if somehow missing
-		sender = danmaku.NewBilibiliSender(sc.RoomID, cfg.Bilibili.SESSDATA, cfg.Bilibili.BiliJCT, cfg.Bilibili.UID)
-		if cfg.Bilibili.DanmakuMax > 0 {
-			sender.MaxLength = cfg.Bilibili.DanmakuMax
-		}
+		sender = newSender(sc.RoomID)
 		rc.SetSender(sc.RoomID, sender)
-		if syncAccounts != nil {
-			syncAccounts()
-		}
+		syncAccounts()
 	}
 
 	// 5. Transcript logger
@@ -381,9 +374,9 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}
 
 	// Pipeline: STT → Translate → Send
-	pauseReader := audio.NewPausableReader(audioReader, func() bool {
+	pauseReader := &pausableReader{inner: audioReader, isPaused: func() bool {
 		return rc.IsPaused(sc.RoomID)
-	})
+	}}
 
 	resultsCh := make(chan stt.StreamResult, 50)
 
@@ -425,9 +418,6 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}()
 
 	targetLang := sc.TargetLang
-	if targetLang == "" {
-		targetLang = cfg.Gemini.TargetLang
-	}
 
 	// Per-stream result channel for ordered sending
 	doneCh := make(chan translateResult, 50)
@@ -568,6 +558,29 @@ func (p *translatePool) submit(job translateJob) {
 func (p *translatePool) close() {
 	close(p.jobCh)
 	p.wg.Wait()
+}
+
+// pausableReader wraps a PCM reader and discards audio when paused,
+// preventing audio from being sent to STT (saves API cost).
+// The underlying reader (ffmpeg) keeps running to maintain the stream.
+type pausableReader struct {
+	inner    io.ReadCloser
+	isPaused func() bool
+}
+
+func (r *pausableReader) Read(p []byte) (int, error) {
+	for r.isPaused() {
+		buf := make([]byte, 3200) // 100ms of 16kHz 16-bit mono
+		if _, err := r.inner.Read(buf); err != nil {
+			return 0, err
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return r.inner.Read(p)
+}
+
+func (r *pausableReader) Close() error {
+	return r.inner.Close()
 }
 
 func isTargetLang(detected, target string) bool {

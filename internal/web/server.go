@@ -8,12 +8,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
-
-	"path/filepath"
 
 	"github.com/christian-lee/livesub/internal/auth"
 	"github.com/christian-lee/livesub/internal/danmaku"
@@ -67,6 +67,7 @@ func (rc *RoomControl) Unregister(roomID int64) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	delete(rc.rooms, roomID)
+	delete(rc.senders, roomID)
 }
 
 func (rc *RoomControl) SetLive(roomID int64, live bool) {
@@ -243,12 +244,12 @@ func (s *Server) Start() {
 	}()
 }
 
-func (s *Server) generateToken() string {
+func (s *Server) generateToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		panic("crypto/rand failed: " + err.Error())
+		return "", fmt.Errorf("crypto/rand: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }
 
 func (s *Server) getSession(r *http.Request) *session {
@@ -280,7 +281,7 @@ func (s *Server) getUser(r *http.Request) *auth.User {
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.getSession(r) == nil {
-			if len(r.URL.Path) > 4 && r.URL.Path[:5] == "/api/" {
+			if strings.HasPrefix(r.URL.Path, "/api/") {
 				http.Error(w, `{"error":"unauthorized"}`, 401)
 				return
 			}
@@ -328,7 +329,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token := s.generateToken()
+	token, err := s.generateToken()
+	if err != nil {
+		http.Error(w, `{"error":"internal error"}`, 500)
+		slog.Error("generate session token", "err", err)
+		return
+	}
 	s.sessions.Store(token, &session{UserID: u.ID, Expiry: time.Now().Add(24 * time.Hour)})
 
 	http.SetCookie(w, &http.Cookie{
@@ -676,8 +682,7 @@ func (s *Server) handleTranscriptDownload(w http.ResponseWriter, r *http.Request
 		allowed := false
 		rooms, _ := s.store.GetUserRooms(u.ID)
 		for _, roomID := range rooms {
-			prefix := fmt.Sprintf("%d_", roomID)
-			if len(filename) > len(prefix) && filename[:len(prefix)] == prefix {
+			if strings.HasPrefix(filename, fmt.Sprintf("%d_", roomID)) {
 				allowed = true
 				break
 			}
