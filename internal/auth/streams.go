@@ -32,19 +32,6 @@ func (s *Store) HideStream(roomID int64) error {
 	return err
 }
 
-// UnhideStream removes a stream from the hidden list.
-func (s *Store) UnhideStream(roomID int64) error {
-	_, err := s.db.Exec(`DELETE FROM hidden_streams WHERE room_id = ?`, roomID)
-	return err
-}
-
-// IsHidden checks if a room is hidden.
-func (s *Store) IsHidden(roomID int64) bool {
-	var n int
-	s.db.QueryRow(`SELECT COUNT(*) FROM hidden_streams WHERE room_id = ?`, roomID).Scan(&n)
-	return n > 0
-}
-
 // ListHiddenRooms returns all hidden room IDs.
 func (s *Store) ListHiddenRooms() map[int64]bool {
 	m := make(map[int64]bool)

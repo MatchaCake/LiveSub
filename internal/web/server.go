@@ -245,7 +245,9 @@ func (s *Server) Start() {
 
 func (s *Server) generateToken() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand failed: " + err.Error())
+	}
 	return hex.EncodeToString(b)
 }
 
@@ -311,7 +313,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", 405)
 		return
 	}
-	r.ParseForm()
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, `{"error":"bad request"}`, 400)
+		return
+	}
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
@@ -504,10 +509,14 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if req.Rooms != nil {
-			s.store.SetUserRooms(u.ID, req.Rooms)
+			if err := s.store.SetUserRooms(u.ID, req.Rooms); err != nil {
+				slog.Error("set user rooms", "user", u.ID, "err", err)
+			}
 		}
 		if req.Accounts != nil {
-			s.store.SetUserAccounts(u.ID, req.Accounts)
+			if err := s.store.SetUserAccounts(u.ID, req.Accounts); err != nil {
+				slog.Error("set user accounts", "user", u.ID, "err", err)
+			}
 		}
 		detail, _ := s.store.GetUserDetail(u.ID)
 		s.audit(r, "创建用户", req.Username)
@@ -540,13 +549,19 @@ func (s *Server) handleAdminUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if req.Password != nil && *req.Password != "" {
-			s.store.UpdatePassword(id, *req.Password)
+			if err := s.store.UpdatePassword(id, *req.Password); err != nil {
+				slog.Error("update password", "user", id, "err", err)
+			}
 		}
 		if req.Rooms != nil {
-			s.store.SetUserRooms(id, *req.Rooms)
+			if err := s.store.SetUserRooms(id, *req.Rooms); err != nil {
+				slog.Error("set user rooms", "user", id, "err", err)
+			}
 		}
 		if req.Accounts != nil {
-			s.store.SetUserAccounts(id, *req.Accounts)
+			if err := s.store.SetUserAccounts(id, *req.Accounts); err != nil {
+				slog.Error("set user accounts", "user", id, "err", err)
+			}
 		}
 		detail, _ := s.store.GetUserDetail(id)
 		s.audit(r, "编辑用户", fmt.Sprintf("ID=%d %s", id, detail.Username))
@@ -737,7 +752,10 @@ func (s *Server) handleAdminStream(w http.ResponseWriter, r *http.Request) {
 			RoomID     int64  `json:"room_id"`
 			SourceLang string `json:"source_lang"`
 		}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid json"}`, 400)
+			return
+		}
 		if req.Name == "" || req.RoomID == 0 {
 			http.Error(w, `{"error":"name and room_id required"}`, 400)
 			return
@@ -760,12 +778,16 @@ func (s *Server) handleAdminStream(w http.ResponseWriter, r *http.Request) {
 		if idStr != "" && idStr != "0" {
 			// DB stream
 			id, _ := strconv.ParseInt(idStr, 10, 64)
-			s.store.DeleteStream(id)
+			if err := s.store.DeleteStream(id); err != nil {
+				slog.Error("delete stream", "id", id, "err", err)
+			}
 			s.audit(r, "删除直播间", fmt.Sprintf("DB ID=%d", id))
 		} else if roomStr != "" {
 			// Config stream → hide
 			roomID, _ := strconv.ParseInt(roomStr, 10, 64)
-			s.store.HideStream(roomID)
+			if err := s.store.HideStream(roomID); err != nil {
+				slog.Error("hide stream", "room", roomID, "err", err)
+			}
 			s.audit(r, "隐藏直播间", fmt.Sprintf("房间 %d (配置)", roomID))
 		}
 
@@ -804,15 +826,22 @@ func (s *Server) handleBiliAccount(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			DanmakuMax *int `json:"danmaku_max"`
 		}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid json"}`, 400)
+			return
+		}
 		if req.DanmakuMax != nil {
-			s.store.UpdateBiliAccountDanmakuMax(id, *req.DanmakuMax)
+			if err := s.store.UpdateBiliAccountDanmakuMax(id, *req.DanmakuMax); err != nil {
+				slog.Error("update danmaku max", "id", id, "err", err)
+			}
 		}
 		s.notifyAccountChange()
 		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
 
 	case "DELETE":
-		s.store.DeleteBiliAccount(id)
+		if err := s.store.DeleteBiliAccount(id); err != nil {
+			slog.Error("delete bili account", "id", id, "err", err)
+		}
 		s.audit(r, "删除B站账号", fmt.Sprintf("ID=%d", id))
 		s.notifyAccountChange()
 		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})

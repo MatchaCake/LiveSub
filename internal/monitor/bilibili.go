@@ -104,48 +104,55 @@ func (m *BilibiliMonitor) Watch(ctx context.Context, roomIDs []int64, events cha
 
 func (m *BilibiliMonitor) checkAll(ctx context.Context, events chan<- RoomEvent) {
 	m.mu.Lock()
-	// Snapshot room states to check (hold lock briefly, not during HTTP calls)
-	states := make([]*RoomState, 0, len(m.rooms))
-	for _, state := range m.rooms {
-		states = append(states, state)
+	// Snapshot room IDs to check (hold lock briefly, not during HTTP calls)
+	roomIDs := make([]int64, 0, len(m.rooms))
+	for id := range m.rooms {
+		roomIDs = append(roomIDs, id)
 	}
 	m.mu.Unlock()
 
-	for _, state := range states {
-		if err := m.checkRoom(ctx, state, events); err != nil {
-			slog.Warn("check room failed", "room", state.RoomID, "err", err)
+	for _, id := range roomIDs {
+		if err := m.checkRoom(ctx, id, events); err != nil {
+			slog.Warn("check room failed", "room", id, "err", err)
 		}
 	}
 }
 
-func (m *BilibiliMonitor) checkRoom(ctx context.Context, state *RoomState, events chan<- RoomEvent) error {
-	info, err := m.getRoomInfo(ctx, state.RoomID)
+func (m *BilibiliMonitor) checkRoom(ctx context.Context, roomID int64, events chan<- RoomEvent) error {
+	info, err := m.getRoomInfo(ctx, roomID)
 	if err != nil {
 		return err
 	}
 
 	isLive := info.LiveStatus == 1
 
-	if isLive && !state.WasLive {
-		slog.Info("room went LIVE", "room", state.RoomID, "title", info.Title)
-		state.Title = info.Title
-		events <- RoomEvent{
-			RoomID: state.RoomID,
-			Live:   true,
-			Title:  info.Title,
-		}
+	// Hold lock while reading/writing RoomState to avoid data race
+	m.mu.Lock()
+	state, exists := m.rooms[roomID]
+	if !exists {
+		m.mu.Unlock()
+		return nil // room was removed while we were checking
 	}
 
+	var event *RoomEvent
+	if isLive && !state.WasLive {
+		slog.Info("room went LIVE", "room", roomID, "title", info.Title)
+		state.Title = info.Title
+		event = &RoomEvent{RoomID: roomID, Live: true, Title: info.Title}
+	}
 	if !isLive && state.WasLive {
-		slog.Info("room went OFFLINE", "room", state.RoomID)
-		events <- RoomEvent{
-			RoomID: state.RoomID,
-			Live:   false,
-		}
+		slog.Info("room went OFFLINE", "room", roomID)
+		event = &RoomEvent{RoomID: roomID, Live: false}
 	}
 
 	state.WasLive = isLive
 	state.Status = LiveStatus(info.LiveStatus)
+	m.mu.Unlock()
+
+	// Send event outside lock to avoid blocking while holding mu
+	if event != nil {
+		events <- *event
+	}
 	return nil
 }
 

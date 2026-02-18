@@ -3,6 +3,7 @@ package transcript
 import (
 	"encoding/csv"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,8 +73,14 @@ func (l *Logger) Write(source, translated string) {
 		return
 	}
 	ts := time.Now().Format("15:04:05")
-	l.writer.Write([]string{ts, source, translated})
+	if err := l.writer.Write([]string{ts, source, translated}); err != nil {
+		slog.Error("transcript write failed", "err", err)
+		return
+	}
 	l.writer.Flush()
+	if err := l.writer.Error(); err != nil {
+		slog.Error("transcript flush failed", "err", err)
+	}
 }
 
 // Close flushes and closes the file.
