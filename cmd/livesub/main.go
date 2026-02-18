@@ -199,6 +199,11 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 	}
 
 	// Pipeline: STT → Translate → Send
+	// Use a pausable reader that discards audio when paused (saves STT cost)
+	pauseReader := audio.NewPausableReader(audioReader, func() bool {
+		return rc.IsPaused(sc.RoomID)
+	})
+
 	resultsCh := make(chan stt.StreamResult, 50)
 
 	go func() {
@@ -207,7 +212,7 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 				close(resultsCh)
 				return
 			}
-			if err := sttClient.Stream(ctx, audioReader, resultsCh); err != nil {
+			if err := sttClient.Stream(ctx, pauseReader, resultsCh); err != nil {
 				if ctx.Err() != nil {
 					close(resultsCh)
 					return

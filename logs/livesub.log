@@ -2187,3 +2187,8 @@ time=2026-02-18T12:04:04.355+08:00 level=INFO msg="room went OFFLINE" room=14988
 time=2026-02-18T12:04:04.355+08:00 level=INFO msg="📴 room went offline, stopping" room=14988041
 time=2026-02-18T12:04:04.355+08:00 level=ERROR msg="audio read error" err="read |0: file already closed"
 time=2026-02-18T12:04:04.359+08:00 level=INFO msg="audio capture stopped"
+time=2026-02-18T12:05:34.095+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T12:05:34.095+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T12:05:34.114+08:00 level=INFO msg="web control panel started" addr=:8899
+time=2026-02-18T12:05:34.115+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041] web=http://localhost:8899
+time=2026-02-18T12:05:34.115+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
