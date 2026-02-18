@@ -48,8 +48,12 @@ func (c *Capturer) Start(ctx context.Context, streamURL string) (io.ReadCloser, 
 
 	go func() {
 		<-ctx.Done()
+		// Kill may fail if process already exited; that's fine.
 		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
+		// Wait reaps the process to avoid zombies.
+		if err := cmd.Wait(); err != nil {
+			slog.Debug("ffmpeg exited", "err", err)
+		}
 		slog.Info("audio capture stopped")
 	}()
 

@@ -137,12 +137,6 @@ func (s *Store) DeleteBiliAccount(id int64) error {
 	return err
 }
 
-// UpdateBiliAccountValid marks an account as valid/invalid.
-func (s *Store) UpdateBiliAccountValid(id int64, valid bool) error {
-	_, err := s.db.Exec(`UPDATE bili_accounts SET valid=? WHERE id=?`, valid, id)
-	return err
-}
-
 // UpdateBiliAccountDanmakuMax updates the danmaku max length.
 func (s *Store) UpdateBiliAccountDanmakuMax(id int64, max int) error {
 	_, err := s.db.Exec(`UPDATE bili_accounts SET danmaku_max=? WHERE id=?`, max, id)
@@ -158,13 +152,17 @@ type QRCodeResult struct {
 
 // GenerateQRCode calls Bilibili API to get a login QR code.
 func GenerateQRCode() (*QRCodeResult, error) {
-	resp, err := http.Get("https://passport.bilibili.com/x/passport-login/web/qrcode/generate")
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get("https://passport.bilibili.com/x/passport-login/web/qrcode/generate")
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
 	var result struct {
 		Code int `json:"code"`
 		Data struct {
@@ -206,7 +204,10 @@ func PollQRCode(qrcodeKey string) (*QRPollResult, error) {
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
 	var result struct {
 		Code int `json:"code"`
 		Data struct {
@@ -257,7 +258,10 @@ func PollQRCode(qrcodeKey string) (*QRPollResult, error) {
 
 // GetBiliUserInfo fetches username from Bilibili API using SESSDATA.
 func GetBiliUserInfo(sessdata string) (string, error) {
-	req, _ := http.NewRequest("GET", "https://api.bilibili.com/x/web-interface/nav", nil)
+	req, err := http.NewRequest("GET", "https://api.bilibili.com/x/web-interface/nav", nil)
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
 	req.Header.Set("Cookie", "SESSDATA="+sessdata)
 	req.Header.Set("User-Agent", "Mozilla/5.0 livesub/1.0")
 
@@ -268,14 +272,19 @@ func GetBiliUserInfo(sessdata string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read body: %w", err)
+	}
 	var result struct {
 		Code int `json:"code"`
 		Data struct {
 			UName string `json:"uname"`
 		} `json:"data"`
 	}
-	json.Unmarshal(body, &result)
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("parse json: %w", err)
+	}
 	if result.Code != 0 || result.Data.UName == "" {
 		return "", fmt.Errorf("failed to get user info (code=%d)", result.Code)
 	}

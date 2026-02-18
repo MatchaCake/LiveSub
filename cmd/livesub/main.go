@@ -407,7 +407,9 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 					slog.Error("STT reconnect failed", "err", err)
 					return
 				}
-				sttClient.Close()
+				if err := sttClient.Close(); err != nil {
+					slog.Warn("close old STT client", "err", err)
+				}
 				sttClient = newClient
 				// Increase backoff, reset on successful stream
 				backoff = min(backoff*2, maxBackoff)
