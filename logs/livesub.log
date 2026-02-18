@@ -1131,3 +1131,27 @@ time=2026-02-18T11:03:37.977+08:00 level=INFO msg="STT final" text="信じ歩け
 time=2026-02-18T11:03:37.977+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text="信じ歩けばいいの？負けないで泣かないで消えてしまい。そうな時は 自分の声を信じ歩けばいいの？いつの時代を 悲しみを避けては通れないけれど 笑顔見せて 今 生きてゆこう。" score=0.54 conf=0.8063805103302002 len=84 hard=true soft=true
 time=2026-02-18T11:04:03.126+08:00 level=INFO msg="STT final" text=" 背景この手紙読んでいるあなたが幸せなことを願います。" lang=ja-jp confidence=0.8886700868606567
 time=2026-02-18T11:04:03.126+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" 背景この手紙読んでいるあなたが幸せなことを願います。" score=0.75 conf=0.8886700868606567 len=27 hard=true soft=false
+time=2026-02-18T11:04:18.811+08:00 level=INFO msg="shutting down..."
+time=2026-02-18T11:04:18.811+08:00 level=ERROR msg="run failed" err="context canceled"
+time=2026-02-18T11:04:18.828+08:00 level=INFO msg="livesub started" streams=1 rooms=[14988041]
+time=2026-02-18T11:04:18.828+08:00 level=INFO msg="bilibili monitor started" rooms=1 interval=30s
+time=2026-02-18T11:04:18.938+08:00 level=INFO msg="room went LIVE" room=14988041 title=正在调试
+time=2026-02-18T11:04:18.938+08:00 level=INFO msg="🎙️ room went live, starting pipeline" name="Test Stream" room=14988041 title=正在调试
+time=2026-02-18T11:04:19.014+08:00 level=INFO msg="got stream URL" name="Test Stream" room=14988041
+time=2026-02-18T11:04:19.014+08:00 level=INFO msg="audio capture started (ffmpeg)" url_prefix=https://d1--ov-gotcha07.bilivideo.com/live-bvc/525703/live_295893148_2747772.flv
+time=2026-02-18T11:04:25.023+08:00 level=INFO msg="STT final" text=知性ありがとうございました。なんとかなんとか乗り切ったかな？ lang=ja-jp confidence=0.9071286916732788
+time=2026-02-18T11:04:25.024+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=知性ありがとうございました。なんとかなんとか乗り切ったかな？ score=0.65 conf=0.9071286916732788 len=30 hard=true soft=false longText=false
+time=2026-02-18T11:04:36.163+08:00 level=INFO msg="STT final" text=" 途中 出しづらい音がやっぱりあったけど、一昨日 前よりは全然。" lang=ja-jp confidence=0.7289443016052246
+time=2026-02-18T11:04:36.164+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" 途中 出しづらい音がやっぱりあったけど、一昨日 前よりは全然。" score=0.74 conf=0.7289443016052246 len=32 hard=true soft=false longText=false
+time=2026-02-18T11:04:50.681+08:00 level=INFO msg="STT final" text=" シニアが結構 歌えないのよちよちゃん、結構大変なんだっけー？にゃーにゃーにゃー やっぱそうだよね。" lang=ja-jp confidence=0.22405295073986053
+time=2026-02-18T11:04:50.681+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" シニアが結構 歌えないのよちよちゃん、結構大変なんだっけー？にゃーにゃーにゃー やっぱそうだよね。" score=0.72 conf=0.22405295073986053 len=50 hard=true soft=false longText=false
+time=2026-02-18T11:04:54.113+08:00 level=INFO msg="STT final" text=ちょっと待ってね。 lang=ja-jp confidence=0.40297552943229675
+time=2026-02-18T11:04:54.113+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=ちょっと待ってね。 score=0.69 conf=0.40297552943229675 len=9 hard=true soft=false longText=false
+time=2026-02-18T11:05:00.998+08:00 level=INFO msg="STT final" text=" これ？" lang=ja-jp confidence=0.32140493392944336
+time=2026-02-18T11:05:00.998+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" これ？" score=0.65 conf=0.32140493392944336 len=4 hard=true soft=false longText=false
+time=2026-02-18T11:05:02.200+08:00 level=INFO msg="STT final" text=" か。" lang=ja-jp confidence=0.4571700096130371
+time=2026-02-18T11:05:02.200+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" か。" score=0.75 conf=0.4571700096130371 len=3 hard=true soft=false longText=false
+time=2026-02-18T11:05:14.183+08:00 level=INFO msg="STT final" text=" これちょっと聞いてみる。ちーちゃん 配信" lang=ja-jp confidence=0.5223373174667358
+time=2026-02-18T11:05:14.183+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" これちょっと聞いてみる。ちーちゃん 配信" score=0.68 conf=0.5223373174667358 len=21 hard=true soft=false longText=false
+time=2026-02-18T11:05:17.576+08:00 level=INFO msg="STT final" text=" ちゃん 配信 お疲れ様。" lang=ja-jp confidence=0.6869695782661438
+time=2026-02-18T11:05:17.576+08:00 level=INFO msg="🎵 skipping (music detected)" name="Test Stream" text=" ちゃん 配信 お疲れ様。" score=0.68 conf=0.6869695782661438 len=13 hard=true soft=false longText=false
