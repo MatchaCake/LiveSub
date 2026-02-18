@@ -56,11 +56,14 @@ func (b *BilibiliBot) SetRoomID(roomID int64) {
 	b.roomID = roomID
 }
 
-// Send sends a danmaku message. Long messages are split into chunks.
-func (b *BilibiliBot) Send(ctx context.Context, msg string) error {
+// Send sends a danmaku message to the specified room. Long messages are split into chunks.
+// If roomID is 0, falls back to the bot's default roomID.
+func (b *BilibiliBot) Send(ctx context.Context, roomID int64, msg string) error {
 	b.mu.Lock()
 	sender := b.sender
-	roomID := b.roomID
+	if roomID == 0 {
+		roomID = b.roomID
+	}
 	maxLen := b.danmakuMax
 	b.mu.Unlock()
 

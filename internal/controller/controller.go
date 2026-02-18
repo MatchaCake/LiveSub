@@ -25,6 +25,7 @@ type OutputState struct {
 	Platform   string `json:"platform"`
 	TargetLang string `json:"target_lang"`
 	BotName    string `json:"bot_name"`
+	RoomID     int64  `json:"room_id"`
 	Paused     bool   `json:"paused"`
 	LastText   string `json:"last_text"`
 }
@@ -54,6 +55,7 @@ func New(pool *bot.Pool, outputs []config.OutputConfig, tlog *transcript.Logger)
 			Platform:   o.Platform,
 			TargetLang: o.TargetLang,
 			BotName:    o.Account,
+			RoomID:     o.RoomID,
 		}
 		paused[o.Name] = false
 	}
@@ -210,15 +212,15 @@ func (c *Controller) run(ctx context.Context) {
 				// Wrap with prefix/suffix
 				wrapped := o.Prefix + txt + o.Suffix
 
-				// Send via bot
+				// Send via bot to output's room (0 = bot's default room)
 				b := c.pool.Get(o.Account)
 				if b == nil {
 					slog.Warn("bot not found for output", "output", o.Name, "bot", o.Account)
 					continue
 				}
 
-				slog.Info("sending", "output", o.Name, "bot", b.Name(), "text", wrapped)
-				if err := b.Send(ctx, wrapped); err != nil {
+				slog.Info("sending", "output", o.Name, "bot", b.Name(), "room", o.RoomID, "text", wrapped)
+				if err := b.Send(ctx, o.RoomID, wrapped); err != nil {
 					slog.Error("send failed", "output", o.Name, "bot", b.Name(), "err", err)
 				}
 			}

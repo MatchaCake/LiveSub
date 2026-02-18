@@ -42,6 +42,7 @@ type Server struct {
 	port            int
 	store           *auth.Store
 	cfg             *config.Config
+	cfgPath         string
 	sessions        sync.Map // token → session
 	onAccountChange func()
 	transcriptDir   string
@@ -51,12 +52,13 @@ type Server struct {
 	live bool
 }
 
-func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string, cfg *config.Config) *Server {
+func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string, cfg *config.Config, cfgPath string) *Server {
 	return &Server{
 		pool:          pool,
 		port:          port,
 		store:         store,
 		cfg:           cfg,
+		cfgPath:       cfgPath,
 		transcriptDir: transcriptDir,
 	}
 }
@@ -106,6 +108,8 @@ func (s *Server) Start() {
 	mux.HandleFunc("/api/admin/bili-account", s.requireAdmin(s.handleBiliAccount))
 	mux.HandleFunc("/api/admin/bili-qr/generate", s.requireAdmin(s.handleBiliQRGenerate))
 	mux.HandleFunc("/api/admin/bili-qr/poll", s.requireAdmin(s.handleBiliQRPoll))
+	mux.HandleFunc("/api/admin/streamer", s.requireAdmin(s.handleAdminStreamer))
+	mux.HandleFunc("/api/admin/outputs", s.requireAdmin(s.handleAdminOutputs))
 
 	addr := fmt.Sprintf(":%d", s.port)
 	slog.Info("web control panel started", "addr", addr)
@@ -653,4 +657,110 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, adminHTML)
+}
+
+// handleAdminStreamer GET returns streamer config, POST/PUT updates it.
+func (s *Server) handleAdminStreamer(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method == "GET" {
+		json.NewEncoder(w).Encode(s.cfg.Streamer)
+		return
+	}
+	if r.Method != "POST" && r.Method != "PUT" {
+		http.Error(w, `{"error":"method not allowed"}`, 405)
+		return
+	}
+	var req struct {
+		Name       string `json:"name"`
+		RoomID     int64  `json:"room_id"`
+		SourceLang string `json:"source_lang"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid json"}`, 400)
+		return
+	}
+	if req.RoomID == 0 {
+		http.Error(w, `{"error":"room_id required"}`, 400)
+		return
+	}
+	s.cfg.Streamer.Name = req.Name
+	s.cfg.Streamer.RoomID = req.RoomID
+	if req.SourceLang != "" {
+		s.cfg.Streamer.SourceLang = req.SourceLang
+	}
+	if err := config.Save(s.cfgPath, s.cfg); err != nil {
+		slog.Error("save config failed", "err", err)
+		http.Error(w, `{"error":"save failed"}`, 500)
+		return
+	}
+	s.store.Log(0, "admin", "update_streamer", fmt.Sprintf("room=%d name=%s", req.RoomID, req.Name), r.RemoteAddr)
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+}
+
+// handleAdminOutputs GET returns outputs, POST adds, PUT updates, DELETE removes.
+func (s *Server) handleAdminOutputs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method == "GET" {
+		json.NewEncoder(w).Encode(s.cfg.Outputs)
+		return
+	}
+	if r.Method == "DELETE" {
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			http.Error(w, `{"error":"name required"}`, 400)
+			return
+		}
+		newOutputs := make([]config.OutputConfig, 0)
+		for _, o := range s.cfg.Outputs {
+			if o.Name != name {
+				newOutputs = append(newOutputs, o)
+			}
+		}
+		s.cfg.Outputs = newOutputs
+		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			http.Error(w, `{"error":"save failed"}`, 500)
+			return
+		}
+		s.store.Log(0, "admin", "delete_output", name, r.RemoteAddr)
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+		return
+	}
+	if r.Method == "POST" || r.Method == "PUT" {
+		var req config.OutputConfig
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid json"}`, 400)
+			return
+		}
+		if req.Name == "" {
+			http.Error(w, `{"error":"name required"}`, 400)
+			return
+		}
+		if req.Platform == "" {
+			req.Platform = "bilibili"
+		}
+		// Update existing or add new
+		found := false
+		for i, o := range s.cfg.Outputs {
+			if o.Name == req.Name {
+				s.cfg.Outputs[i] = req
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.cfg.Outputs = append(s.cfg.Outputs, req)
+		}
+		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			http.Error(w, `{"error":"save failed"}`, 500)
+			return
+		}
+		action := "add_output"
+		if found {
+			action = "update_output"
+		}
+		s.store.Log(0, "admin", action, fmt.Sprintf("name=%s platform=%s lang=%s room=%d", req.Name, req.Platform, req.TargetLang, req.RoomID), r.RemoteAddr)
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+		return
+	}
+	http.Error(w, `{"error":"method not allowed"}`, 405)
 }
