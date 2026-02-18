@@ -105,7 +105,7 @@ func run(cfgPath string) error {
 	if webPort == 0 {
 		webPort = 8899
 	}
-	webServer := web.NewServer(rc, webPort)
+	webServer := web.NewServer(rc, webPort, cfg.Auth.Username, cfg.Auth.Password)
 	webServer.Start()
 
 	// Monitor live status

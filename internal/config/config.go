@@ -13,7 +13,13 @@ type Config struct {
 	Gemini   GeminiConfig   `yaml:"gemini"`
 	Bilibili BilibiliConfig `yaml:"bilibili"`
 	Streams  []StreamConfig `yaml:"streams"`
-	WebPort  int            `yaml:"web_port"` // control panel port (default 8899)
+	WebPort  int            `yaml:"web_port"`  // control panel port (default 8899)
+	Auth     AuthConfig     `yaml:"auth"`      // web UI authentication
+}
+
+type AuthConfig struct {
+	Username string `yaml:"username"` // login username
+	Password string `yaml:"password"` // login password
 }
 
 type GoogleConfig struct {

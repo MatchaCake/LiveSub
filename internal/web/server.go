@@ -1,12 +1,15 @@
 package web
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 )
 
 // RoomState tracks the state of a single room
@@ -15,7 +18,7 @@ type RoomState struct {
 	Name    string `json:"name"`
 	Live    bool   `json:"live"`
 	Paused  bool   `json:"paused"`
-	STTText string `json:"stt_text"` // last STT text for display
+	STTText string `json:"stt_text"`
 }
 
 // RoomControl manages per-room pause/resume state
@@ -25,9 +28,7 @@ type RoomControl struct {
 }
 
 func NewRoomControl() *RoomControl {
-	return &RoomControl{
-		rooms: make(map[int64]*RoomState),
-	}
+	return &RoomControl{rooms: make(map[int64]*RoomState)}
 }
 
 func (rc *RoomControl) Register(roomID int64, name string) {
@@ -81,21 +82,43 @@ func (rc *RoomControl) GetAll() []RoomState {
 	return states
 }
 
-// Server serves the control panel
+// Server serves the control panel with authentication
 type Server struct {
-	rc   *RoomControl
-	port int
+	rc       *RoomControl
+	port     int
+	username string
+	password string
+	sessions sync.Map // token → expiry time
 }
 
-func NewServer(rc *RoomControl, port int) *Server {
-	return &Server{rc: rc, port: port}
+func NewServer(rc *RoomControl, port int, username, password string) *Server {
+	return &Server{
+		rc:       rc,
+		port:     port,
+		username: username,
+		password: password,
+	}
 }
 
 func (s *Server) Start() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.handleIndex)
-	mux.HandleFunc("/api/rooms", s.handleRooms)
-	mux.HandleFunc("/api/toggle", s.handleToggle)
+
+	if s.username != "" && s.password != "" {
+		// Auth enabled
+		mux.HandleFunc("/login", s.handleLoginPage)
+		mux.HandleFunc("/api/login", s.handleLogin)
+		mux.HandleFunc("/api/logout", s.handleLogout)
+		mux.HandleFunc("/", s.requireAuth(s.handleIndex))
+		mux.HandleFunc("/api/rooms", s.requireAuth(s.handleRooms))
+		mux.HandleFunc("/api/toggle", s.requireAuth(s.handleToggle))
+		slog.Info("web auth enabled", "username", s.username)
+	} else {
+		// No auth
+		mux.HandleFunc("/", s.handleIndex)
+		mux.HandleFunc("/api/rooms", s.handleRooms)
+		mux.HandleFunc("/api/toggle", s.handleToggle)
+		slog.Info("web auth disabled (no username/password configured)")
+	}
 
 	addr := fmt.Sprintf(":%d", s.port)
 	slog.Info("web control panel started", "addr", addr)
@@ -104,6 +127,90 @@ func (s *Server) Start() {
 			slog.Error("web server error", "err", err)
 		}
 	}()
+}
+
+func (s *Server) generateToken() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func (s *Server) isValidSession(r *http.Request) bool {
+	cookie, err := r.Cookie("livesub_token")
+	if err != nil {
+		return false
+	}
+	expiry, ok := s.sessions.Load(cookie.Value)
+	if !ok {
+		return false
+	}
+	if time.Now().After(expiry.(time.Time)) {
+		s.sessions.Delete(cookie.Value)
+		return false
+	}
+	return true
+}
+
+func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.isValidSession(r) {
+			next(w, r)
+			return
+		}
+		// API calls get 401, page requests redirect to login
+		if len(r.URL.Path) > 4 && r.URL.Path[:4] == "/api" {
+			http.Error(w, `{"error":"unauthorized"}`, 401)
+			return
+		}
+		http.Redirect(w, r, "/login", http.StatusFound)
+	}
+}
+
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", 405)
+		return
+	}
+	r.ParseForm()
+	user := r.FormValue("username")
+	pass := r.FormValue("password")
+
+	if user != s.username || pass != s.password {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(401)
+		json.NewEncoder(w).Encode(map[string]string{"error": "用户名或密码错误"})
+		return
+	}
+
+	token := s.generateToken()
+	s.sessions.Store(token, time.Now().Add(24*time.Hour))
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "livesub_token",
+		Value:    token,
+		Path:     "/",
+		MaxAge:   86400,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	slog.Info("user logged in", "username", user, "ip", r.RemoteAddr)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+}
+
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("livesub_token")
+	if err == nil {
+		s.sessions.Delete(cookie.Value)
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:   "livesub_token",
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
+	})
+	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
 func (s *Server) handleRooms(w http.ResponseWriter, r *http.Request) {
@@ -119,19 +226,78 @@ func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	paused := s.rc.Toggle(roomID)
-	state := "▶️ 翻译中"
-	if paused {
-		state = "⏸ 已暂停"
-	}
 	slog.Info("room toggled", "room", roomID, "paused", paused)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"room_id": roomID, "paused": paused, "state": state})
+	json.NewEncoder(w).Encode(map[string]any{"room_id": roomID, "paused": paused})
+}
+
+func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
+	if s.isValidSession(r) {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, loginHTML)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, indexHTML)
 }
+
+const loginHTML = `<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveSub 登录</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .login-box { background: #16213e; border-radius: 16px; padding: 40px; width: 360px; }
+  h1 { text-align: center; margin-bottom: 30px; color: #e94560; font-size: 22px; }
+  .field { margin-bottom: 20px; }
+  label { display: block; margin-bottom: 6px; font-size: 14px; color: #aaa; }
+  input { width: 100%; padding: 12px; border: 1px solid #333; border-radius: 8px; background: #0f3460; color: #eee; font-size: 16px; outline: none; }
+  input:focus { border-color: #e94560; }
+  .btn { width: 100%; padding: 14px; border: none; border-radius: 8px; background: #e94560; color: #fff; font-size: 16px; font-weight: bold; cursor: pointer; }
+  .btn:hover { opacity: 0.9; }
+  .error { color: #e94560; text-align: center; margin-top: 15px; font-size: 14px; display: none; }
+</style>
+</head>
+<body>
+<div class="login-box">
+  <h1>🎙️ LiveSub</h1>
+  <form id="loginForm">
+    <div class="field">
+      <label>用户名</label>
+      <input type="text" name="username" id="username" autocomplete="username" required>
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input type="password" name="password" id="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit" class="btn">登录</button>
+    <div class="error" id="error"></div>
+  </form>
+</div>
+<script>
+document.getElementById('loginForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const form = new FormData(e.target);
+  const res = await fetch('/api/login', { method: 'POST', body: new URLSearchParams(form) });
+  if (res.ok) {
+    window.location.href = '/';
+  } else {
+    const data = await res.json();
+    const el = document.getElementById('error');
+    el.textContent = data.error || '登录失败';
+    el.style.display = 'block';
+  }
+};
+</script>
+</body>
+</html>`
 
 const indexHTML = `<!DOCTYPE html>
 <html lang="zh">
@@ -142,7 +308,10 @@ const indexHTML = `<!DOCTYPE html>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; padding: 20px; }
-  h1 { text-align: center; margin-bottom: 30px; font-size: 24px; color: #e94560; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+  h1 { font-size: 24px; color: #e94560; }
+  .logout { padding: 8px 16px; border: 1px solid #555; border-radius: 6px; background: transparent; color: #aaa; cursor: pointer; font-size: 13px; text-decoration: none; }
+  .logout:hover { border-color: #e94560; color: #e94560; }
   .rooms { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
   .room { background: #16213e; border-radius: 12px; padding: 20px; min-width: 300px; max-width: 400px; flex: 1; }
   .room-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -163,11 +332,15 @@ const indexHTML = `<!DOCTYPE html>
 </style>
 </head>
 <body>
-<h1>🎙️ LiveSub 控制面板</h1>
+<div class="header">
+  <h1>🎙️ LiveSub 控制面板</h1>
+  <a href="/api/logout" class="logout">退出登录</a>
+</div>
 <div class="rooms" id="rooms"></div>
 <script>
 async function fetchRooms() {
   const res = await fetch('/api/rooms');
+  if (res.status === 401) { window.location.href = '/login'; return; }
   const rooms = await res.json();
   const el = document.getElementById('rooms');
   el.innerHTML = rooms.map(r => ` + "`" + `
