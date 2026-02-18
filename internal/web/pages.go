@@ -44,7 +44,10 @@ const loginHTML = `<!DOCTYPE html>
   </form>
 </div>
 <script>
-document.getElementById('langSwitcherSlot').innerHTML = langSwitcher();
+document.getElementById('langSwitcherSlot').textContent = '';
+document.getElementById('langSwitcherSlot').appendChild(
+  document.createRange().createContextualFragment(langSwitcher())
+);
 setLang(currentLang);
 document.getElementById('loginForm').onsubmit = async function(e) {
   e.preventDefault();
@@ -111,25 +114,6 @@ const indexHTML = `<!DOCTYPE html>
     <a href="/api/logout" class="link-btn" data-i18n="logout">退出登录</a>
   </div>
 </div>
-<div id="streamerConfig" style="display:none;background:#16213e;border-radius:12px;padding:15px;margin-bottom:15px;">
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-    <span style="font-size:14px;color:#e94560;">📡 监听直播间:</span>
-    <input type="text" id="streamerName" placeholder="主播名" style="padding:6px 10px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:13px;width:120px;">
-    <input type="number" id="streamerRoom" placeholder="房间号" style="padding:6px 10px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:13px;width:100px;">
-    <select id="streamerLang" style="padding:6px 10px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:13px;">
-      <option value="ja">日本語 (ja)</option>
-      <option value="zh">中文 (zh)</option>
-      <option value="en">English (en)</option>
-      <option value="ko">한국어 (ko)</option>
-      <option value="fr">Français (fr)</option>
-      <option value="de">Deutsch (de)</option>
-      <option value="es">Español (es)</option>
-      <option value="ru">Русский (ru)</option>
-    </select>
-    <button onclick="switchStreamer()" style="padding:6px 16px;border:none;border-radius:6px;background:#e94560;color:#fff;cursor:pointer;font-size:13px;font-weight:bold;">切换</button>
-    <span id="switchMsg" style="font-size:12px;color:#4ecca3;display:none;"></span>
-  </div>
-</div>
 <div id="content"><div class="empty">加载中...</div></div>
 
 <div style="margin-top:30px;background:#16213e;border-radius:12px;padding:20px;">
@@ -140,7 +124,10 @@ const indexHTML = `<!DOCTYPE html>
   <div id="transcripts" style="font-size:13px;color:#aaa;">点击刷新加载</div>
 </div>
 <script>
-document.getElementById('langSwitcherSlot').innerHTML = langSwitcher();
+document.getElementById('langSwitcherSlot').textContent = '';
+document.getElementById('langSwitcherSlot').appendChild(
+  document.createRange().createContextualFragment(langSwitcher())
+);
 
 var currentUser = null;
 
@@ -153,7 +140,6 @@ async function init() {
     document.getElementById('adminLink').style.display = '';
   }
   fetchStatus();
-  loadStreamer();
   setInterval(fetchStatus, 2000);
 }
 
@@ -166,78 +152,95 @@ async function fetchStatus() {
 
 function renderStatus(data) {
   var el = document.getElementById('content');
-  var outputsHTML = (data.outputs || []).map(function(o) {
-    return '<div class="output-card">' +
-      '<div class="output-name">' + escapeHTML(o.name) + '</div>' +
-      '<div class="output-info">' +
-        escapeHTML(o.platform) + ' | ' + escapeHTML(o.target_lang || t('source_text')) + ' | ' + t('bot_label') + ' ' + escapeHTML(o.bot_name) +
-      '</div>' +
-      '<div class="status">' +
-        '<span class="badge ' + (o.paused ? 'badge-paused' : 'badge-translating') + '">' + (o.paused ? t('paused') : t('translating')) + '</span>' +
-      '</div>' +
-      '<div class="output-text">' + escapeHTML(o.last_text || t('waiting_voice')) + '</div>' +
-      '<button class="btn ' + (o.paused ? 'btn-resume' : 'btn-pause') + '" onclick="toggle(\'' + escapeHTML(o.name).replace(/'/g,"\\'") + '\')">' +
-        (o.paused ? t('resume_btn') : t('pause_btn')) +
-      '</button>' +
-    '</div>';
-  }).join('');
+  var streamers = data.streamers || [];
 
-  el.innerHTML = '<div class="streamer-card">' +
-    '<div class="streamer-header">' +
-      '<span class="streamer-name">' + escapeHTML(data.name || t('room_default')) + '</span>' +
-      '<span class="room-id">#' + data.room_id + '</span>' +
-    '</div>' +
-    '<div class="status">' +
-      '<span class="badge ' + (data.live ? 'badge-live' : 'badge-offline') + '">' + (data.live ? t('live') : t('offline')) + '</span>' +
-    '</div>' +
-    '<div class="outputs">' +
-      (outputsHTML || '<div style="color:#666;">' + t('no_outputs') + '</div>') +
-    '</div>' +
-  '</div>';
-}
-
-function escapeHTML(str) {
-  if (!str) return '';
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-async function toggle(outputName) {
-  var res = await fetch('/api/toggle?output=' + encodeURIComponent(outputName));
-  var data = await res.json();
-  if (data.offline) {
-    // Stream offline, toggle is no-op
+  if (streamers.length === 0) {
+    el.textContent = t('no_streamers');
+    return;
   }
-  fetchStatus();
-}
 
-async function loadStreamer() {
-  if (!currentUser || !currentUser.is_admin) return;
-  document.getElementById('streamerConfig').style.display = '';
-  var res = await fetch('/api/admin/streamer');
-  var s = await res.json();
-  document.getElementById('streamerName').value = s.name || '';
-  document.getElementById('streamerRoom').value = s.room_id || '';
-  document.getElementById('streamerLang').value = s.source_lang || '';
-}
+  // Build DOM safely
+  while (el.firstChild) el.removeChild(el.firstChild);
 
-async function switchStreamer() {
-  var name = document.getElementById('streamerName').value.trim();
-  var roomID = parseInt(document.getElementById('streamerRoom').value) || 0;
-  var lang = document.getElementById('streamerLang').value.trim();
-  if (!roomID) { alert('房间号必填'); return; }
-  var res = await fetch('/api/admin/streamer', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name: name, room_id: roomID, source_lang: lang})
+  streamers.forEach(function(s) {
+    var card = document.createElement('div');
+    card.className = 'streamer-card';
+
+    var header = document.createElement('div');
+    header.className = 'streamer-header';
+    var nameEl = document.createElement('span');
+    nameEl.className = 'streamer-name';
+    nameEl.textContent = s.name || t('room_default');
+    var roomEl = document.createElement('span');
+    roomEl.className = 'room-id';
+    roomEl.textContent = '#' + s.room_id;
+    header.appendChild(nameEl);
+    header.appendChild(roomEl);
+    card.appendChild(header);
+
+    var statusDiv = document.createElement('div');
+    statusDiv.className = 'status';
+    var badge = document.createElement('span');
+    badge.className = 'badge ' + (s.live ? 'badge-live' : 'badge-offline');
+    badge.textContent = s.live ? t('live') : t('offline');
+    statusDiv.appendChild(badge);
+    card.appendChild(statusDiv);
+
+    var outputsDiv = document.createElement('div');
+    outputsDiv.className = 'outputs';
+
+    if (!s.outputs || s.outputs.length === 0) {
+      var noOut = document.createElement('div');
+      noOut.style.color = '#666';
+      noOut.textContent = t('no_outputs');
+      outputsDiv.appendChild(noOut);
+    } else {
+      s.outputs.forEach(function(o) {
+        var oc = document.createElement('div');
+        oc.className = 'output-card';
+
+        var on = document.createElement('div');
+        on.className = 'output-name';
+        on.textContent = o.name;
+        oc.appendChild(on);
+
+        var oi = document.createElement('div');
+        oi.className = 'output-info';
+        oi.textContent = (o.platform || '') + ' | ' + (o.target_lang || t('source_text')) + ' | ' + t('bot_label') + ' ' + (o.bot_name || '');
+        oc.appendChild(oi);
+
+        var os = document.createElement('div');
+        os.className = 'status';
+        var ob = document.createElement('span');
+        ob.className = 'badge ' + (o.paused ? 'badge-paused' : 'badge-translating');
+        ob.textContent = o.paused ? t('paused') : t('translating');
+        os.appendChild(ob);
+        oc.appendChild(os);
+
+        var ot = document.createElement('div');
+        ot.className = 'output-text';
+        ot.textContent = o.last_text || t('waiting_voice');
+        oc.appendChild(ot);
+
+        var btn = document.createElement('button');
+        btn.className = 'btn ' + (o.paused ? 'btn-resume' : 'btn-pause');
+        btn.textContent = o.paused ? t('resume_btn') : t('pause_btn');
+        btn.setAttribute('data-streamer', s.name);
+        btn.setAttribute('data-output', o.name);
+        btn.onclick = function() { toggle(this.getAttribute('data-streamer'), this.getAttribute('data-output')); };
+        oc.appendChild(btn);
+
+        outputsDiv.appendChild(oc);
+      });
+    }
+    card.appendChild(outputsDiv);
+    el.appendChild(card);
   });
-  if (res.ok) {
-    var msg = document.getElementById('switchMsg');
-    msg.textContent = '✅ 已切换，正在重新监听...';
-    msg.style.display = '';
-    setTimeout(function() { msg.style.display = 'none'; }, 3000);
-    fetchStatus();
-  } else {
-    alert('切换失败');
-  }
+}
+
+async function toggle(streamerName, outputName) {
+  await fetch('/api/toggle?streamer=' + encodeURIComponent(streamerName) + '&output=' + encodeURIComponent(outputName));
+  fetchStatus();
 }
 
 function onLangChange() { fetchStatus(); }
@@ -250,18 +253,52 @@ async function loadTranscripts() {
     el.textContent = t('no_transcripts');
     return;
   }
-  var rows = files.map(function(f) {
-    var size = f.size < 1024 ? f.size + ' B' : (f.size/1024).toFixed(1) + ' KB';
-    return '<tr style="border-top:1px solid #0f3460;">' +
-      '<td style="padding:6px;font-size:13px;">' + escapeHTML(f.name) + '</td>' +
-      '<td style="padding:6px;text-align:right;color:#666;font-size:12px;">' + size + '</td>' +
-      '<td style="padding:6px;text-align:right;color:#666;font-size:12px;">' + escapeHTML(f.mod_time) + '</td>' +
-      '<td style="padding:6px;text-align:right;"><a href="/api/transcripts/download?file=' + encodeURIComponent(f.name) + '" style="color:#4ecca3;text-decoration:none;font-size:13px;">⬇ 下载</a></td>' +
-    '</tr>';
-  }).join('');
-  el.innerHTML = '<table style="width:100%;border-collapse:collapse;">' +
-    '<tr style="color:#aaa;font-size:12px;"><th style="text-align:left;padding:6px;">' + t('filename') + '</th><th style="text-align:right;padding:6px;">' + t('size') + '</th><th style="text-align:right;padding:6px;">' + t('time') + '</th><th></th></tr>' +
-    rows + '</table>';
+
+  while (el.firstChild) el.removeChild(el.firstChild);
+  var table = document.createElement('table');
+  table.style.cssText = 'width:100%;border-collapse:collapse;';
+
+  var thead = document.createElement('tr');
+  thead.style.cssText = 'color:#aaa;font-size:12px;';
+  [t('filename'), t('size'), t('time'), ''].forEach(function(h, i) {
+    var th = document.createElement('th');
+    th.style.cssText = i === 0 ? 'text-align:left;padding:6px;' : 'text-align:right;padding:6px;';
+    th.textContent = h;
+    thead.appendChild(th);
+  });
+  table.appendChild(thead);
+
+  files.forEach(function(f) {
+    var tr = document.createElement('tr');
+    tr.style.borderTop = '1px solid #0f3460';
+
+    var td1 = document.createElement('td');
+    td1.style.cssText = 'padding:6px;font-size:13px;';
+    td1.textContent = f.name;
+    tr.appendChild(td1);
+
+    var td2 = document.createElement('td');
+    td2.style.cssText = 'padding:6px;text-align:right;color:#666;font-size:12px;';
+    td2.textContent = f.size < 1024 ? f.size + ' B' : (f.size/1024).toFixed(1) + ' KB';
+    tr.appendChild(td2);
+
+    var td3 = document.createElement('td');
+    td3.style.cssText = 'padding:6px;text-align:right;color:#666;font-size:12px;';
+    td3.textContent = f.mod_time;
+    tr.appendChild(td3);
+
+    var td4 = document.createElement('td');
+    td4.style.cssText = 'padding:6px;text-align:right;';
+    var dl = document.createElement('a');
+    dl.href = '/api/transcripts/download?file=' + encodeURIComponent(f.name);
+    dl.style.cssText = 'color:#4ecca3;text-decoration:none;font-size:13px;';
+    dl.textContent = t('download');
+    td4.appendChild(dl);
+    tr.appendChild(td4);
+
+    table.appendChild(tr);
+  });
+  el.appendChild(table);
 }
 
 init();
@@ -292,11 +329,12 @@ const adminHTML = `<!DOCTYPE html>
   .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin: 2px; }
   .tag-account { background: #3d1e5c; }
   .tag-admin { background: #e94560; }
+  .tag-output { background: #0f3460; }
   .small-btn { padding: 5px 12px; border: 1px solid #555; border-radius: 4px; background: transparent; color: #aaa; cursor: pointer; font-size: 12px; }
   .small-btn:hover { border-color: #e94560; color: #e94560; }
   .small-btn.danger:hover { border-color: #ff4444; color: #ff4444; }
   .form-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
-  .form-row input { padding: 8px 12px; border: 1px solid #333; border-radius: 6px; background: #0f3460; color: #eee; font-size: 14px; outline: none; }
+  .form-row input, .form-row select { padding: 8px 12px; border: 1px solid #333; border-radius: 6px; background: #0f3460; color: #eee; font-size: 14px; outline: none; }
   .form-row input:focus { border-color: #e94560; }
   .form-row input[type="text"], .form-row input[type="password"] { width: 160px; }
   .add-btn { padding: 8px 20px; border: none; border-radius: 6px; background: #4ecca3; color: #000; cursor: pointer; font-size: 14px; font-weight: bold; }
@@ -319,12 +357,75 @@ const adminHTML = `<!DOCTYPE html>
   <a href="/" class="link-btn" data-i18n="back">← 返回控制面板</a>
 </div>
 
+<!-- Streamer Management -->
+<div class="section">
+  <h2 data-i18n="stream_mgmt">📺 主播管理</h2>
+  <div id="streamersTable"></div>
+  <div style="margin-top:15px;">
+    <h3 style="font-size:14px;color:#aaa;margin-bottom:10px;" data-i18n="add_streamer">➕ 添加/编辑主播</h3>
+    <div id="streamerMsg" class="msg"></div>
+    <div class="form-row">
+      <input type="text" id="sName" placeholder="主播名称">
+      <input type="number" id="sRoom" placeholder="房间号" style="width:120px;">
+      <select id="sLang">
+        <option value="ja-JP">日本語 (ja)</option>
+        <option value="zh-CN">中文 (zh)</option>
+        <option value="en-US">English (en)</option>
+        <option value="ko-KR">한국어 (ko)</option>
+        <option value="fr-FR">Français (fr)</option>
+        <option value="de-DE">Deutsch (de)</option>
+        <option value="es-ES">Español (es)</option>
+        <option value="ru-RU">Русский (ru)</option>
+      </select>
+      <button class="add-btn" onclick="saveStreamer()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Per-Streamer Output Management -->
+<div class="section">
+  <h2 data-i18n="output_mgmt">📤 输出管理</h2>
+  <div class="form-row" style="margin-bottom:15px;">
+    <span style="font-size:14px;color:#aaa;">选择主播:</span>
+    <select id="outputStreamerSelect" onchange="loadStreamerOutputs()"></select>
+  </div>
+  <div id="outputsTable"></div>
+  <div style="margin-top:15px;">
+    <h3 style="font-size:14px;color:#aaa;margin-bottom:10px;" data-i18n="add_output">➕ 添加/编辑输出</h3>
+    <div id="outputMsg" class="msg"></div>
+    <div class="form-row">
+      <input type="text" id="outName" placeholder="名称">
+      <select id="outPlatform">
+        <option value="bilibili">bilibili</option>
+      </select>
+      <select id="outLang">
+        <option value="">(原文直传)</option>
+        <option value="zh">中文 (zh)</option>
+        <option value="zh-CN">中文 (zh-CN)</option>
+        <option value="en">English (en)</option>
+        <option value="ja">日本語 (ja)</option>
+        <option value="ko">한국어 (ko)</option>
+        <option value="fr">Français (fr)</option>
+        <option value="de">Deutsch (de)</option>
+        <option value="es">Español (es)</option>
+        <option value="ru">Русский (ru)</option>
+      </select>
+      <select id="outAccount">
+      </select>
+    </div>
+    <div class="form-row">
+      <input type="number" id="outRoom" placeholder="房间号 (0=默认)" style="width:120px;">
+      <input type="text" id="outPrefix" placeholder="前缀" style="width:100px;">
+      <input type="text" id="outSuffix" placeholder="后缀" style="width:100px;">
+      <button class="add-btn" onclick="saveOutput()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- User Management -->
 <div class="section">
   <h2 data-i18n="user_list">👥 用户列表</h2>
-  <table>
-    <thead><tr><th>用户名</th><th>角色</th><th>B站账号</th><th>操作</th></tr></thead>
-    <tbody id="usersBody"></tbody>
-  </table>
+  <div id="usersTable"></div>
 </div>
 
 <div class="section">
@@ -339,15 +440,17 @@ const adminHTML = `<!DOCTYPE html>
     <div style="font-size:13px;color:#aaa;margin-bottom:6px;">分配B站账号:</div>
     <div class="checkbox-group" id="accountCheckboxes"></div>
   </div>
+  <div style="margin-bottom:10px;">
+    <div style="font-size:13px;color:#aaa;margin-bottom:6px;">分配直播间:</div>
+    <div class="checkbox-group" id="roomCheckboxes"></div>
+  </div>
   <button class="add-btn" onclick="addUser()">添加</button>
 </div>
 
+<!-- Bilibili Accounts -->
 <div class="section">
   <h2 data-i18n="bili_accounts">🎮 B站弹幕账号</h2>
-  <table>
-    <thead><tr><th>名称</th><th>UID</th><th>弹幕上限</th><th>添加时间</th><th>状态</th><th>操作</th></tr></thead>
-    <tbody id="biliBody"></tbody>
-  </table>
+  <div id="biliTable"></div>
   <div style="margin-top:15px;">
     <button class="add-btn" onclick="startQRLogin()" id="qrBtn">📱 扫码添加账号</button>
   </div>
@@ -358,43 +461,7 @@ const adminHTML = `<!DOCTYPE html>
   </div>
 </div>
 
-<div class="section">
-  <h2 data-i18n="output_mgmt">📤 输出管理</h2>
-  <table>
-    <thead><tr><th>名称</th><th>平台</th><th>目标语言</th><th>B站账号</th><th>房间号</th><th>前缀</th><th>后缀</th><th>操作</th></tr></thead>
-    <tbody id="outputsBody"></tbody>
-  </table>
-  <div style="margin-top:15px;">
-    <h3 style="font-size:14px;color:#aaa;margin-bottom:10px;" data-i18n="add_output">➕ 添加/编辑输出</h3>
-    <div id="outputMsg" class="msg"></div>
-    <div class="form-row">
-      <input type="text" id="outName" placeholder="名称">
-      <select id="outPlatform" style="padding:8px 12px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:14px;">
-        <option value="bilibili">bilibili</option>
-      </select>
-      <select id="outLang" style="padding:8px 12px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:14px;">
-        <option value="">(原文直传)</option>
-        <option value="zh">中文 (zh)</option>
-        <option value="en">English (en)</option>
-        <option value="ja">日本語 (ja)</option>
-        <option value="ko">한국어 (ko)</option>
-        <option value="fr">Français (fr)</option>
-        <option value="de">Deutsch (de)</option>
-        <option value="es">Español (es)</option>
-        <option value="ru">Русский (ru)</option>
-      </select>
-      <select id="outAccount" style="padding:8px 12px;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:14px;">
-      </select>
-    </div>
-    <div class="form-row">
-      <input type="number" id="outRoom" placeholder="房间号 (0=默认)" style="width:120px;">
-      <input type="text" id="outPrefix" placeholder="前缀" style="width:100px;">
-      <input type="text" id="outSuffix" placeholder="后缀" style="width:100px;">
-      <button class="add-btn" onclick="saveOutput()">保存</button>
-    </div>
-  </div>
-</div>
-
+<!-- Audit Log -->
 <div class="section">
   <h2 data-i18n="audit_log">📋 操作记录</h2>
   <div style="margin-bottom:10px;">
@@ -405,50 +472,353 @@ const adminHTML = `<!DOCTYPE html>
       <option value="500">最近500条</option>
     </select>
   </div>
-  <table id="auditTable" style="display:none;">
-    <thead><tr><th>时间</th><th>用户</th><th>操作</th><th>详情</th><th>IP</th></tr></thead>
-    <tbody id="auditBody"></tbody>
-  </table>
+  <div id="auditTable" style="display:none;"></div>
 </div>
 
 <script>
-document.getElementById('langSwitcherSlot').innerHTML = langSwitcher();
+document.getElementById('langSwitcherSlot').textContent = '';
+document.getElementById('langSwitcherSlot').appendChild(
+  document.createRange().createContextualFragment(langSwitcher())
+);
 
 var allAccounts = [];
+var allStreamers = [];
+var cachedOutputs = [];
 
 function escapeHTML(str) {
   if (!str) return '';
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Build a table using DOM APIs for safety
+function buildTable(headers, rows) {
+  var table = document.createElement('table');
+  var thead = document.createElement('thead');
+  var tr = document.createElement('tr');
+  headers.forEach(function(h) {
+    var th = document.createElement('th');
+    th.textContent = h;
+    tr.appendChild(th);
+  });
+  thead.appendChild(tr);
+  table.appendChild(thead);
+  var tbody = document.createElement('tbody');
+  rows.forEach(function(row) {
+    var r = document.createElement('tr');
+    row.forEach(function(cell) {
+      var td = document.createElement('td');
+      if (typeof cell === 'string') {
+        td.textContent = cell;
+      } else if (cell instanceof Node) {
+        td.appendChild(cell);
+      } else if (cell && cell.html) {
+        td.appendChild(document.createRange().createContextualFragment(cell.html));
+      }
+      r.appendChild(td);
+    });
+    tbody.appendChild(r);
+  });
+  table.appendChild(tbody);
+  return table;
+}
+
+function makeBtn(text, cls, onclick) {
+  var b = document.createElement('button');
+  b.className = cls;
+  b.textContent = text;
+  b.onclick = onclick;
+  return b;
+}
+
+function makeTag(text, cls) {
+  var s = document.createElement('span');
+  s.className = 'tag ' + cls;
+  s.textContent = text;
+  return s;
+}
+
+function makeFragment(nodes) {
+  var f = document.createDocumentFragment();
+  nodes.forEach(function(n) { if (n) f.appendChild(n); });
+  return f;
+}
+
 async function init() {
   var acctsRes = await fetch('/api/admin/all-accounts');
   allAccounts = await acctsRes.json() || [];
   renderCheckboxes();
+  loadStreamers();
   loadUsers();
   loadBiliAccounts();
-  loadOutputs();
 }
 
 function renderCheckboxes() {
-  document.getElementById('accountCheckboxes').innerHTML = allAccounts.map(function(a) {
-    return '<label><input type="checkbox" value="' + escapeHTML(a) + '"> ' + escapeHTML(a) + '</label>';
-  }).join('');
+  var el = document.getElementById('accountCheckboxes');
+  el.textContent = '';
+  allAccounts.forEach(function(a) {
+    var label = document.createElement('label');
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = a;
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(' ' + a));
+    el.appendChild(label);
+  });
 }
+
+function renderRoomCheckboxes() {
+  var el = document.getElementById('roomCheckboxes');
+  el.textContent = '';
+  allStreamers.forEach(function(s) {
+    var label = document.createElement('label');
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = String(s.room_id);
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(' ' + s.name + ' (#' + s.room_id + ')'));
+    el.appendChild(label);
+  });
+}
+
+// --- Streamer Management ---
+
+async function loadStreamers() {
+  var res = await fetch('/api/admin/streamers');
+  allStreamers = await res.json() || [];
+  renderStreamersTable();
+  renderStreamerSelect();
+  renderRoomCheckboxes();
+  if (allStreamers.length > 0) {
+    loadStreamerOutputs();
+  }
+}
+
+function renderStreamersTable() {
+  var container = document.getElementById('streamersTable');
+  container.textContent = '';
+  var rows = allStreamers.map(function(s) {
+    var outFrag = document.createDocumentFragment();
+    (s.outputs||[]).forEach(function(o) {
+      outFrag.appendChild(makeTag(o.name + ' (' + (o.target_lang||'原文') + ')', 'tag-output'));
+    });
+    if (!s.outputs || s.outputs.length === 0) {
+      var none = document.createElement('span');
+      none.style.color = '#666';
+      none.textContent = t('none');
+      outFrag.appendChild(none);
+    }
+    var actions = document.createDocumentFragment();
+    actions.appendChild(makeBtn(t('edit'), 'small-btn', function() { editStreamer(s.name); }));
+    actions.appendChild(document.createTextNode(' '));
+    actions.appendChild(makeBtn(t('delete'), 'small-btn danger', function() { deleteStreamer(s.name); }));
+    return [s.name, String(s.room_id), s.source_lang||'ja-JP', outFrag, actions];
+  });
+  if (rows.length === 0) {
+    var p = document.createElement('p');
+    p.style.cssText = 'text-align:center;color:#666;padding:15px;';
+    p.textContent = t('no_streamers');
+    container.appendChild(p);
+    return;
+  }
+  container.appendChild(buildTable([t('name'), t('room_id'), t('source_lang'), t('outputs'), t('actions')], rows));
+}
+
+function renderStreamerSelect() {
+  var sel = document.getElementById('outputStreamerSelect');
+  sel.textContent = '';
+  allStreamers.forEach(function(s) {
+    var opt = document.createElement('option');
+    opt.value = s.name;
+    opt.textContent = s.name + ' (#' + s.room_id + ')';
+    sel.appendChild(opt);
+  });
+}
+
+async function saveStreamer() {
+  var name = document.getElementById('sName').value.trim();
+  var roomID = parseInt(document.getElementById('sRoom').value) || 0;
+  var lang = document.getElementById('sLang').value;
+  var msgEl = document.getElementById('streamerMsg');
+  if (!name) { msgEl.className = 'msg err'; msgEl.textContent = t('name_required'); return; }
+  if (!roomID) { msgEl.className = 'msg err'; msgEl.textContent = t('room_required'); return; }
+  var existing = allStreamers.find(function(s) { return s.name === name; });
+  var outputs = existing ? existing.outputs : [];
+  var res = await fetch('/api/admin/streamers', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: name, room_id: roomID, source_lang: lang, outputs: outputs})
+  });
+  if (res.ok) {
+    msgEl.className = 'msg ok'; msgEl.textContent = t('streamer_saved') + ': ' + name;
+    document.getElementById('sName').value = '';
+    document.getElementById('sRoom').value = '';
+    loadStreamers();
+  } else {
+    var data = await res.json();
+    msgEl.className = 'msg err'; msgEl.textContent = data.error || t('create_failed');
+  }
+}
+
+function editStreamer(name) {
+  var s = allStreamers.find(function(x) { return x.name === name; });
+  if (!s) return;
+  document.getElementById('sName').value = s.name;
+  document.getElementById('sRoom').value = s.room_id;
+  document.getElementById('sLang').value = s.source_lang || 'ja-JP';
+  document.getElementById('sName').scrollIntoView({behavior: 'smooth'});
+}
+
+async function deleteStreamer(name) {
+  if (!confirm(t('confirm_del_streamer') + ' ' + name + '?')) return;
+  await fetch('/api/admin/streamers?name=' + encodeURIComponent(name), {method: 'DELETE'});
+  loadStreamers();
+}
+
+// --- Per-Streamer Output Management ---
+
+async function loadStreamerOutputs() {
+  var sel = document.getElementById('outputStreamerSelect');
+  var streamerName = sel.value;
+  var container = document.getElementById('outputsTable');
+  if (!streamerName) {
+    container.textContent = t('select_streamer');
+    return;
+  }
+  var res = await fetch('/api/admin/streamer-outputs?streamer=' + encodeURIComponent(streamerName));
+  var outputs = await res.json() || [];
+  cachedOutputs = outputs;
+  container.textContent = '';
+
+  var rows = outputs.map(function(o) {
+    var actions = document.createDocumentFragment();
+    actions.appendChild(makeBtn(t('edit'), 'small-btn', function() { editOutput(o.name); }));
+    actions.appendChild(document.createTextNode(' '));
+    actions.appendChild(makeBtn(t('delete'), 'small-btn danger', function() { deleteOutput(o.name); }));
+    return [o.name, o.platform||'bilibili', o.target_lang||'(原文)', o.account||'', String(o.room_id||0), o.prefix||'', o.suffix||'', actions];
+  });
+  if (rows.length === 0) {
+    var p = document.createElement('p');
+    p.style.cssText = 'text-align:center;color:#666;padding:15px;';
+    p.textContent = t('no_streamer_outputs');
+    container.appendChild(p);
+    return;
+  }
+  container.appendChild(buildTable([t('name'), t('platform'), t('target_lang'), t('account'), t('room_id'), t('prefix'), t('suffix'), t('actions')], rows));
+
+  // Populate account dropdown
+  var acctSel = document.getElementById('outAccount');
+  acctSel.textContent = '';
+  var defOpt = document.createElement('option');
+  defOpt.value = '';
+  defOpt.textContent = '(' + t('select_account') + ')';
+  acctSel.appendChild(defOpt);
+  allAccounts.forEach(function(a) {
+    var opt = document.createElement('option');
+    opt.value = a;
+    opt.textContent = a;
+    acctSel.appendChild(opt);
+  });
+}
+
+async function saveOutput() {
+  var streamerName = document.getElementById('outputStreamerSelect').value;
+  if (!streamerName) { alert(t('select_streamer')); return; }
+  var name = document.getElementById('outName').value.trim();
+  var msgEl = document.getElementById('outputMsg');
+  if (!name) { msgEl.className = 'msg err'; msgEl.textContent = t('name_required'); return; }
+  var body = {
+    name: name,
+    platform: document.getElementById('outPlatform').value,
+    target_lang: document.getElementById('outLang').value.trim(),
+    account: document.getElementById('outAccount').value,
+    room_id: parseInt(document.getElementById('outRoom').value) || 0,
+    prefix: document.getElementById('outPrefix').value,
+    suffix: document.getElementById('outSuffix').value
+  };
+  var res = await fetch('/api/admin/streamer-outputs?streamer=' + encodeURIComponent(streamerName), {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  if (res.ok) {
+    msgEl.className = 'msg ok'; msgEl.textContent = t('output_saved') + ': ' + name;
+    clearOutputForm();
+    loadStreamerOutputs();
+    loadStreamers();
+  } else {
+    var data = await res.json();
+    msgEl.className = 'msg err'; msgEl.textContent = data.error || t('create_failed');
+  }
+}
+
+function editOutput(name) {
+  var o = cachedOutputs.find(function(x) { return x.name === name; });
+  if (!o) return;
+  document.getElementById('outName').value = o.name;
+  document.getElementById('outPlatform').value = o.platform || 'bilibili';
+  document.getElementById('outLang').value = o.target_lang || '';
+  var sel = document.getElementById('outAccount');
+  sel.value = o.account || '';
+  if (sel.value !== (o.account || '') && o.account) {
+    var opt = document.createElement('option');
+    opt.value = o.account;
+    opt.textContent = o.account;
+    sel.appendChild(opt);
+    sel.value = o.account;
+  }
+  document.getElementById('outRoom').value = o.room_id || 0;
+  document.getElementById('outPrefix').value = o.prefix || '';
+  document.getElementById('outSuffix').value = o.suffix || '';
+  document.getElementById('outName').scrollIntoView({behavior: 'smooth'});
+}
+
+async function deleteOutput(name) {
+  var streamerName = document.getElementById('outputStreamerSelect').value;
+  if (!confirm(t('confirm_del_output') + ' ' + name + '?')) return;
+  await fetch('/api/admin/streamer-outputs?streamer=' + encodeURIComponent(streamerName) + '&name=' + encodeURIComponent(name), {method: 'DELETE'});
+  loadStreamerOutputs();
+  loadStreamers();
+}
+
+function clearOutputForm() {
+  document.getElementById('outName').value = '';
+  document.getElementById('outLang').selectedIndex = 0;
+  document.getElementById('outAccount').selectedIndex = 0;
+  document.getElementById('outRoom').value = '';
+  document.getElementById('outPrefix').value = '';
+  document.getElementById('outSuffix').value = '';
+}
+
+// --- User Management ---
 
 async function loadUsers() {
   var res = await fetch('/api/admin/users');
   var users = await res.json() || [];
-  document.getElementById('usersBody').innerHTML = users.map(function(u) {
-    var accts = (u.accounts||[]).map(function(a) {
-      return '<span class="tag tag-account">' + escapeHTML(a) + '</span>';
-    }).join('');
-    var role = u.is_admin ? '<span class="tag tag-admin">管理员</span>' : '普通用户';
-    var actions = u.is_admin ? '' :
-      '<button class="small-btn" onclick="editUser(' + u.id + ')">编辑</button> ' +
-      '<button class="small-btn danger" onclick="deleteUser(' + u.id + ',\'' + escapeHTML(u.username) + '\')">删除</button>';
-    return '<tr><td>' + escapeHTML(u.username) + '</td><td>' + role + '</td><td>' + (accts||'无') + '</td><td>' + actions + '</td></tr>';
-  }).join('');
+  var container = document.getElementById('usersTable');
+  container.textContent = '';
+
+  var rows = users.map(function(u) {
+    var acctFrag = document.createDocumentFragment();
+    (u.accounts||[]).forEach(function(a) { acctFrag.appendChild(makeTag(a, 'tag-account')); });
+    if (!u.accounts || u.accounts.length === 0) acctFrag.appendChild(document.createTextNode(t('none')));
+
+    var roomFrag = document.createDocumentFragment();
+    (u.rooms||[]).forEach(function(r) {
+      var s = allStreamers.find(function(x) { return x.room_id === r; });
+      var label = s ? s.name + ' (#' + r + ')' : '#' + r;
+      roomFrag.appendChild(makeTag(label, 'tag-output'));
+    });
+    if (!u.rooms || u.rooms.length === 0) roomFrag.appendChild(document.createTextNode(t('none')));
+
+    var roleEl = u.is_admin ? makeTag(t('role_admin'), 'tag-admin') : document.createTextNode(t('role_user'));
+
+    var actions = document.createDocumentFragment();
+    if (!u.is_admin) {
+      actions.appendChild(makeBtn(t('edit'), 'small-btn', function() { editUser(u.id); }));
+      actions.appendChild(document.createTextNode(' '));
+      actions.appendChild(makeBtn(t('delete'), 'small-btn danger', function() { deleteUser(u.id, u.username); }));
+    }
+    return [u.username, roleEl, acctFrag, roomFrag, actions];
+  });
+  container.appendChild(buildTable([t('username'), t('role'), t('accounts'), t('rooms'), t('actions')], rows));
 }
 
 async function addUser() {
@@ -456,11 +826,12 @@ async function addUser() {
   var password = document.getElementById('newPassword').value;
   var isAdmin = document.getElementById('newIsAdmin').checked;
   var accounts = Array.from(document.querySelectorAll('#accountCheckboxes input:checked')).map(function(c) { return c.value; });
+  var rooms = Array.from(document.querySelectorAll('#roomCheckboxes input:checked')).map(function(c) { return parseInt(c.value); });
   var msgEl = document.getElementById('addMsg');
   if (!username || !password) { msgEl.className = 'msg err'; msgEl.textContent = t('fill_required'); return; }
   var res = await fetch('/api/admin/users', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({username: username, password: password, is_admin: isAdmin, accounts: accounts})
+    body: JSON.stringify({username: username, password: password, is_admin: isAdmin, accounts: accounts, rooms: rooms})
   });
   if (res.ok) {
     msgEl.className = 'msg ok'; msgEl.textContent = t('user_created') + ': ' + username;
@@ -468,6 +839,7 @@ async function addUser() {
     document.getElementById('newPassword').value = '';
     document.getElementById('newIsAdmin').checked = false;
     document.querySelectorAll('#accountCheckboxes input').forEach(function(c) { c.checked = false; });
+    document.querySelectorAll('#roomCheckboxes input').forEach(function(c) { c.checked = false; });
     loadUsers();
   } else {
     var data = await res.json();
@@ -486,11 +858,19 @@ async function editUser(id) {
     t('assign_accounts_prompt') + '\n' + acctChoices.map(function(a,i) { return (i+1) + '. ' + a.name + (a.checked?' ✓':''); }).join('\n'),
     acctChoices.filter(function(a) { return a.checked; }).map(function(_,i) { return i+1; }).join(',')
   );
-  if (acctStr === null && (newPw === null || newPw === '')) return;
+  var roomChoices = allStreamers.map(function(s) { return {room_id: s.room_id, name: s.name, checked: (u.rooms||[]).indexOf(s.room_id) !== -1}; });
+  var roomStr = prompt(
+    t('assign_rooms_prompt') + '\n' + roomChoices.map(function(r,i) { return (i+1) + '. ' + r.name + ' (#' + r.room_id + ')' + (r.checked?' ✓':''); }).join('\n'),
+    roomChoices.filter(function(r) { return r.checked; }).map(function(_,i) { return i+1; }).join(',')
+  );
+  if (acctStr === null && roomStr === null && (newPw === null || newPw === '')) return;
   var body = {};
   if (newPw) body.password = newPw;
   if (acctStr !== null) {
     body.accounts = acctStr.split(',').filter(function(s) { return s.trim(); }).map(function(s) { var idx = parseInt(s.trim())-1; return acctChoices[idx] ? acctChoices[idx].name : null; }).filter(Boolean);
+  }
+  if (roomStr !== null) {
+    body.rooms = roomStr.split(',').filter(function(s) { return s.trim(); }).map(function(s) { var idx = parseInt(s.trim())-1; return roomChoices[idx] ? roomChoices[idx].room_id : null; }).filter(Boolean);
   }
   await fetch('/api/admin/user?id=' + id, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
   loadUsers();
@@ -502,20 +882,41 @@ async function deleteUser(id, name) {
   loadUsers();
 }
 
+// --- Bilibili Accounts ---
+
 async function loadBiliAccounts() {
   var res = await fetch('/api/admin/bili-accounts');
   var accounts = await res.json() || [];
-  document.getElementById('biliBody').innerHTML = accounts.map(function(a) {
-    var status = a.valid ? '<span style="color:#4ecca3;">✅ ' + t('valid') + '</span>' : '<span style="color:#e94560;">❌ ' + t('invalid') + '</span>';
-    return '<tr>' +
-      '<td>' + escapeHTML(a.name) + '</td>' +
-      '<td>' + (a.uid || '-') + '</td>' +
-      '<td><input type="number" value="' + a.danmaku_max + '" style="width:60px;padding:4px;border:1px solid #333;border-radius:4px;background:#0f3460;color:#eee;font-size:13px;" onchange="updateBiliMax(' + a.id + ',this.value)"></td>' +
-      '<td style="font-size:12px;color:#aaa;">' + escapeHTML(a.created_at||'') + '</td>' +
-      '<td>' + status + '</td>' +
-      '<td><button class="small-btn danger" onclick="deleteBiliAccount(' + a.id + ',\'' + escapeHTML(a.name).replace(/'/g,"\\'") + '\')">删除</button></td>' +
-    '</tr>';
-  }).join('') || '<tr><td colspan="6" style="text-align:center;color:#666;">' + t('no_bili_accounts') + '</td></tr>';
+  var container = document.getElementById('biliTable');
+  container.textContent = '';
+
+  var rows = accounts.map(function(a) {
+    var statusEl = document.createElement('span');
+    statusEl.style.color = a.valid ? '#4ecca3' : '#e94560';
+    statusEl.textContent = a.valid ? t('valid') : t('invalid');
+
+    var maxInput = document.createElement('input');
+    maxInput.type = 'number';
+    maxInput.value = a.danmaku_max;
+    maxInput.style.cssText = 'width:60px;padding:4px;border:1px solid #333;border-radius:4px;background:#0f3460;color:#eee;font-size:13px;';
+    maxInput.onchange = function() { updateBiliMax(a.id, this.value); };
+
+    var actions = makeBtn(t('delete'), 'small-btn danger', function() { deleteBiliAccount(a.id, a.name); });
+
+    var timeEl = document.createElement('span');
+    timeEl.style.cssText = 'font-size:12px;color:#aaa;';
+    timeEl.textContent = a.created_at || '';
+
+    return [a.name, String(a.uid || '-'), maxInput, timeEl, statusEl, actions];
+  });
+  if (rows.length === 0) {
+    var p = document.createElement('p');
+    p.style.cssText = 'text-align:center;color:#666;padding:15px;';
+    p.textContent = t('no_bili_accounts');
+    container.appendChild(p);
+    return;
+  }
+  container.appendChild(buildTable([t('name'), t('uid'), t('danmaku_max'), t('created_at'), t('status'), t('actions')], rows));
 }
 
 async function updateBiliMax(id, val) {
@@ -540,7 +941,13 @@ async function startQRLogin() {
   document.getElementById('qrArea').style.display = '';
   document.getElementById('qrBtn').style.display = 'none';
   document.getElementById('qrStatus').textContent = t('qr_scan');
-  document.getElementById('qrImage').innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(data.url) + '" alt="QR" style="width:200px;height:200px;">';
+  var img = document.createElement('img');
+  img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(data.url);
+  img.alt = 'QR';
+  img.style.cssText = 'width:200px;height:200px;';
+  var qrImg = document.getElementById('qrImage');
+  qrImg.textContent = '';
+  qrImg.appendChild(img);
   qrPollTimer = setInterval(async function() {
     var pollRes = await fetch('/api/admin/bili-qr/poll?key=' + data.qrcode_key);
     var pollData = await pollRes.json();
@@ -556,112 +963,26 @@ function cancelQR() {
   document.getElementById('qrBtn').style.display = '';
 }
 
+// --- Audit Log ---
+
 async function loadAudit() {
   var limit = document.getElementById('auditLimit').value;
   var res = await fetch('/api/admin/audit?limit=' + limit);
   var entries = await res.json() || [];
-  document.getElementById('auditTable').style.display = '';
-  document.getElementById('auditBody').innerHTML = entries.map(function(e) {
-    return '<tr><td style="white-space:nowrap;font-size:12px;">' + escapeHTML(e.time) + '</td><td>' + escapeHTML(e.username) + '</td><td>' + escapeHTML(e.action) + '</td><td style="font-size:12px;color:#aaa;">' + escapeHTML(e.detail||'') + '</td><td style="font-size:12px;color:#666;">' + escapeHTML(e.ip||'') + '</td></tr>';
-  }).join('') || '<tr><td colspan="5" style="text-align:center;color:#666;">' + t('no_log') + '</td></tr>';
-}
-
-// --- Output Management ---
-async function loadOutputs() {
-  var res = await fetch('/api/admin/outputs');
-  var outputs = await res.json() || [];
-  document.getElementById('outputsBody').innerHTML = outputs.map(function(o) {
-    return '<tr>' +
-      '<td>' + escapeHTML(o.name) + '</td>' +
-      '<td>' + escapeHTML(o.platform||'bilibili') + '</td>' +
-      '<td>' + escapeHTML(o.target_lang||'(原文)') + '</td>' +
-      '<td>' + escapeHTML(o.account) + '</td>' +
-      '<td>' + (o.room_id||0) + '</td>' +
-      '<td style="font-size:12px;color:#aaa;">' + escapeHTML(o.prefix||'') + '</td>' +
-      '<td style="font-size:12px;color:#aaa;">' + escapeHTML(o.suffix||'') + '</td>' +
-      '<td>' +
-        '<button class="small-btn" onclick="editOutput(\'' + escapeHTML(o.name).replace(/'/g,"\\'") + '\')">编辑</button> ' +
-        '<button class="small-btn danger" onclick="deleteOutput(\'' + escapeHTML(o.name).replace(/'/g,"\\'") + '\')">删除</button>' +
-      '</td></tr>';
-  }).join('') || '<tr><td colspan="8" style="text-align:center;color:#666;">暂无输出</td></tr>';
-  cachedOutputs = outputs;
-  var sel = document.getElementById('outAccount');
-  sel.innerHTML = '<option value="">(选择账号)</option>' + allAccounts.map(function(a) {
-    return '<option value="' + escapeHTML(a) + '">' + escapeHTML(a) + '</option>';
-  }).join('');
-}
-
-async function saveOutput() {
-  var name = document.getElementById('outName').value.trim();
-  var msgEl = document.getElementById('outputMsg');
-  if (!name) { msgEl.className = 'msg err'; msgEl.textContent = '名称必填'; return; }
-  var body = {
-    name: name,
-    platform: document.getElementById('outPlatform').value,
-    target_lang: document.getElementById('outLang').value.trim(),
-    account: document.getElementById('outAccount').value,
-    room_id: parseInt(document.getElementById('outRoom').value) || 0,
-    prefix: document.getElementById('outPrefix').value,
-    suffix: document.getElementById('outSuffix').value
-  };
-  var res = await fetch('/api/admin/outputs', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(body)
+  var container = document.getElementById('auditTable');
+  container.style.display = '';
+  container.textContent = '';
+  if (entries.length === 0) {
+    var p = document.createElement('p');
+    p.style.cssText = 'text-align:center;color:#666;padding:15px;';
+    p.textContent = t('no_log');
+    container.appendChild(p);
+    return;
+  }
+  var rows = entries.map(function(e) {
+    return [e.time, e.username, e.action, e.detail||'', e.ip||''];
   });
-  if (res.ok) {
-    msgEl.className = 'msg ok'; msgEl.textContent = '已保存: ' + name;
-    clearOutputForm();
-    loadOutputs();
-  } else {
-    var data = await res.json();
-    msgEl.className = 'msg err'; msgEl.textContent = data.error || '保存失败';
-  }
-}
-
-var cachedOutputs = [];
-
-async function editOutput(name) {
-  var o = cachedOutputs.find(function(x) { return x.name === name; });
-  if (!o) {
-    var res = await fetch('/api/admin/outputs');
-    cachedOutputs = await res.json() || [];
-    o = cachedOutputs.find(function(x) { return x.name === name; });
-  }
-  if (!o) return;
-  document.getElementById('outName').value = o.name;
-  document.getElementById('outPlatform').value = o.platform || 'bilibili';
-  document.getElementById('outLang').value = o.target_lang || '';
-  // Ensure account dropdown has the value
-  var sel = document.getElementById('outAccount');
-  sel.value = o.account || '';
-  if (sel.value !== (o.account || '')) {
-    // Account not in dropdown, add it
-    var opt = document.createElement('option');
-    opt.value = o.account;
-    opt.textContent = o.account;
-    sel.appendChild(opt);
-    sel.value = o.account;
-  }
-  document.getElementById('outRoom').value = o.room_id || 0;
-  document.getElementById('outPrefix').value = o.prefix || '';
-  document.getElementById('outSuffix').value = o.suffix || '';
-  // Scroll to form
-  document.getElementById('outName').scrollIntoView({behavior: 'smooth'});
-}
-
-async function deleteOutput(name) {
-  if (!confirm('确定删除输出 ' + name + '?')) return;
-  await fetch('/api/admin/outputs?name=' + encodeURIComponent(name), {method: 'DELETE'});
-  loadOutputs();
-}
-
-function clearOutputForm() {
-  document.getElementById('outName').value = '';
-  document.getElementById('outLang').selectedIndex = 0;
-  document.getElementById('outAccount').selectedIndex = 0;
-  document.getElementById('outRoom').value = '';
-  document.getElementById('outPrefix').value = '';
-  document.getElementById('outSuffix').value = '';
+  container.appendChild(buildTable([t('log_time'), t('log_user'), t('log_action'), t('log_detail'), t('log_ip')], rows));
 }
 
 init();

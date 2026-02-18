@@ -51,6 +51,13 @@ func main() {
 	}
 }
 
+// activeStream tracks a running streamer pipeline.
+type activeStream struct {
+	cancel context.CancelFunc
+	ctrl   *controller.Controller
+	name   string
+}
+
 func run(cfgPath string) error {
 	hotCfg, err := config.NewHotConfig(cfgPath)
 	if err != nil {
@@ -58,8 +65,8 @@ func run(cfgPath string) error {
 	}
 	cfg := hotCfg.Get()
 
-	if cfg.Streamer.RoomID == 0 {
-		return fmt.Errorf("no streamer room_id configured")
+	if len(cfg.Streamers) == 0 {
+		return fmt.Errorf("no streamers configured")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -84,7 +91,7 @@ func run(cfgPath string) error {
 	// Init bot pool from config
 	pool := bot.NewPool()
 	for _, bc := range cfg.Bots {
-		b := bot.NewBilibiliBot(bc.Name, cfg.Streamer.RoomID, bc.SESSDATA, bc.BiliJCT, bc.UID, bc.DanmakuMax)
+		b := bot.NewBilibiliBot(bc.Name, 0, bc.SESSDATA, bc.BiliJCT, bc.UID, bc.DanmakuMax)
 		pool.Add(b)
 	}
 
@@ -116,13 +123,11 @@ func run(cfgPath string) error {
 			}
 			existing := pool.Get(a.Name)
 			if existing != nil {
-				// Update existing bot credentials
 				if bb, ok := existing.(*bot.BilibiliBot); ok {
 					bb.UpdateCredentials(a.SESSDATA, a.BiliJCT, a.UID, a.DanmakuMax)
 				}
 			} else {
-				// Add new bot from DB
-				b := bot.NewBilibiliBot(a.Name, cfg.Streamer.RoomID, a.SESSDATA, a.BiliJCT, a.UID, a.DanmakuMax)
+				b := bot.NewBilibiliBot(a.Name, 0, a.SESSDATA, a.BiliJCT, a.UID, a.DanmakuMax)
 				pool.Add(b)
 			}
 		}
@@ -138,6 +143,10 @@ func run(cfgPath string) error {
 	if webPort == 0 {
 		webPort = 8899
 	}
+
+	// Active streams map: room_id → activeStream
+	var mu sync.Mutex
+	active := make(map[int64]*activeStream)
 
 	// Web server
 	webServer := web.NewServer(pool, webPort, authStore, transcriptDir, cfg, cfgPath)
@@ -156,78 +165,89 @@ func run(cfgPath string) error {
 	})
 	hotCfg.Watch()
 
-	// Monitor live status
+	// Monitor live status for all streamers
 	mon := stream.NewMonitor(stream.WithMonitorInterval(30 * time.Second))
-	monEvents, err := mon.Watch(ctx, []int64{cfg.Streamer.RoomID})
+	roomIDs := cfg.RoomIDs()
+	monEvents, err := mon.Watch(ctx, roomIDs)
 	if err != nil {
 		return fmt.Errorf("start monitor: %w", err)
 	}
 
-	type activeStream struct {
-		cancel context.CancelFunc
-	}
-	var (
-		mu            sync.Mutex
-		active        *activeStream
-		currentRoomID = cfg.Streamer.RoomID
-	)
-
-	// Register streamer change callback
+	// Register streamer change callback — resync monitor rooms
 	webServer.OnStreamerChange(func() {
 		newCfg := hotCfg.Get()
 		mu.Lock()
-		oldRoom := currentRoomID
-		newRoom := newCfg.Streamer.RoomID
-		if newRoom == oldRoom {
-			mu.Unlock()
-			return
+
+		// Find rooms that were removed
+		newRoomSet := make(map[int64]bool)
+		for _, rid := range newCfg.RoomIDs() {
+			newRoomSet[rid] = true
 		}
-		// Stop current stream if active
-		if active != nil {
-			slog.Info("stopping current stream for room switch", "old", oldRoom, "new", newRoom)
-			active.cancel()
-			active = nil
+		for rid, as := range active {
+			if !newRoomSet[rid] {
+				slog.Info("stopping removed streamer", "room", rid, "name", as.name)
+				as.cancel()
+				delete(active, rid)
+			}
 		}
-		currentRoomID = newRoom
+
+		// Find rooms that were added
+		currentRooms := make(map[int64]bool)
+		for rid := range active {
+			currentRooms[rid] = true
+		}
 		mu.Unlock()
 
-		webServer.SetLive(false)
-		webServer.SetController(nil)
+		// Sync monitor rooms
+		for _, s := range newCfg.Streamers {
+			if s.RoomID != 0 {
+				mon.AddRoom(s.RoomID)
+			}
+		}
 
-		// Switch monitor rooms
-		mon.RemoveRoom(oldRoom)
-		mon.AddRoom(newRoom)
-		slog.Info("switched monitor to new room", "old", oldRoom, "new", newRoom)
+		webServer.SetLive(newCfg.Streamers[0].Name, false)
 	})
 
 	webServer.Start()
 
+	// Process monitor events for all streamers
 	go func() {
 		for ev := range monEvents {
 			mu.Lock()
-			webServer.SetLive(ev.Live)
+			currentCfg := hotCfg.Get()
+			sc := currentCfg.FindStreamerByRoom(ev.RoomID)
+			if sc == nil {
+				mu.Unlock()
+				slog.Warn("monitor event for unknown room", "room", ev.RoomID)
+				continue
+			}
+
+			streamerName := sc.Name
+			webServer.SetLive(streamerName, ev.Live)
 
 			if ev.Live {
-				if active != nil {
+				if active[ev.RoomID] != nil {
 					mu.Unlock()
 					continue
 				}
 
 				slog.Info("room went live, starting pipeline",
-					"name", cfg.Streamer.Name,
+					"name", sc.Name,
 					"room", ev.RoomID,
 					"title", ev.Title,
 				)
 
 				streamCtx, streamCancel := context.WithCancel(ctx)
-				active = &activeStream{cancel: streamCancel}
+				streamerCfg := *sc // copy
+				active[ev.RoomID] = &activeStream{
+					cancel: streamCancel,
+					name:   sc.Name,
+				}
 				mu.Unlock()
 
-				go func() {
-					currentCfg := hotCfg.Get()
-
+				go func(sc config.StreamerConfig) {
 					// Create transcript logger for this session
-					tlog, err := transcript.NewLogger(transcriptDir, currentCfg.Streamer.RoomID, currentCfg.Streamer.Name)
+					tlog, err := transcript.NewLogger(transcriptDir, sc.RoomID, sc.Name)
 					if err != nil {
 						slog.Warn("transcript logger failed, continuing without", "err", err)
 					} else {
@@ -235,30 +255,36 @@ func run(cfgPath string) error {
 						slog.Info("transcript logging", "path", tlog.Path())
 					}
 
-					// Create controller
-					ctrl := controller.New(pool, currentCfg.Outputs, tlog)
+					// Create controller for this streamer
+					ctrl := controller.New(pool, sc.Outputs, tlog)
 					ctrl.Start(streamCtx)
-					webServer.SetController(ctrl)
+
+					mu.Lock()
+					if as, ok := active[sc.RoomID]; ok {
+						as.ctrl = ctrl
+					}
+					mu.Unlock()
+					webServer.SetController(sc.Name, ctrl)
 
 					// Create and run agent
-					a := agent.New(currentCfg, translator, ctrl)
+					a := agent.New(sc, translator, ctrl)
 					if err := a.Run(streamCtx); err != nil {
-						slog.Error("stream ended", "name", currentCfg.Streamer.Name, "err", err)
+						slog.Error("stream ended", "name", sc.Name, "err", err)
 					}
 
 					ctrl.Stop()
-					webServer.SetController(nil)
+					webServer.SetController(sc.Name, nil)
 					streamCancel()
 
 					mu.Lock()
-					active = nil
+					delete(active, sc.RoomID)
 					mu.Unlock()
-				}()
+				}(streamerCfg)
 			} else {
-				if active != nil {
-					slog.Info("room went offline, stopping", "room", ev.RoomID)
-					active.cancel()
-					active = nil
+				if as, ok := active[ev.RoomID]; ok {
+					slog.Info("room went offline, stopping", "name", as.name, "room", ev.RoomID)
+					as.cancel()
+					delete(active, ev.RoomID)
 				}
 				mu.Unlock()
 			}
@@ -266,10 +292,13 @@ func run(cfgPath string) error {
 	}()
 
 	webURL := fmt.Sprintf("http://localhost:%d", webPort)
+	streamerNames := make([]string, len(cfg.Streamers))
+	for i, s := range cfg.Streamers {
+		streamerNames[i] = s.Name
+	}
 	slog.Info("livesub started",
-		"streamer", cfg.Streamer.Name,
-		"room", cfg.Streamer.RoomID,
-		"outputs", len(cfg.Outputs),
+		"streamers", streamerNames,
+		"rooms", roomIDs,
 		"bots", len(pool.Names()),
 		"web", webURL,
 	)

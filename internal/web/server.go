@@ -21,19 +21,31 @@ import (
 	"github.com/christian-lee/livesub/internal/transcript"
 )
 
-// RoomState tracks the overall state for the web UI.
-type RoomState struct {
+// StreamerState tracks per-streamer state for the web UI.
+type StreamerState struct {
 	RoomID   int64                    `json:"room_id"`
 	Name     string                   `json:"name"`
 	Live     bool                     `json:"live"`
 	Outputs  []controller.OutputState `json:"outputs"`
-	BotNames []string                 `json:"bot_names"`
+}
+
+// StatusResponse is the /api/status response.
+type StatusResponse struct {
+	Streamers []StreamerState `json:"streamers"`
+	BotNames  []string        `json:"bot_names"`
 }
 
 // session stores user info
 type session struct {
 	UserID int64
 	Expiry time.Time
+}
+
+// streamerRuntime tracks runtime state for a single streamer.
+type streamerRuntime struct {
+	live   bool
+	ctrl   *controller.Controller
+	paused map[string]bool // output name → paused (persists across streams)
 }
 
 // Server serves the control panel with SQLite-based authentication
@@ -48,22 +60,27 @@ type Server struct {
 	onStreamerChange func()
 	transcriptDir   string
 
-	mu     sync.RWMutex
-	ctrl   *controller.Controller
-	live   bool
-	paused map[string]bool // output name → paused (persists across streams)
+	mu        sync.RWMutex
+	streamers map[string]*streamerRuntime // streamer name → runtime state
 }
 
 func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string, cfg *config.Config, cfgPath string) *Server {
-	return &Server{
+	s := &Server{
 		pool:          pool,
 		port:          port,
 		store:         store,
 		cfg:           cfg,
 		cfgPath:       cfgPath,
 		transcriptDir: transcriptDir,
-		paused:        make(map[string]bool),
+		streamers:     make(map[string]*streamerRuntime),
 	}
+	// Init runtime state for each configured streamer
+	for _, sc := range cfg.Streamers {
+		s.streamers[sc.Name] = &streamerRuntime{
+			paused: make(map[string]bool),
+		}
+	}
+	return s
 }
 
 // OnAccountChange registers a callback when bilibili accounts change.
@@ -76,24 +93,34 @@ func (s *Server) OnStreamerChange(fn func()) {
 	s.onStreamerChange = fn
 }
 
-// SetController sets the active controller (when stream goes live).
-// Syncs server-level pause state to the new controller.
-func (s *Server) SetController(ctrl *controller.Controller) {
+// SetController sets the active controller for a streamer.
+func (s *Server) SetController(streamerName string, ctrl *controller.Controller) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.ctrl = ctrl
+	rt := s.getOrCreateRuntime(streamerName)
+	rt.ctrl = ctrl
 	if ctrl != nil {
-		for name, paused := range s.paused {
+		for name, paused := range rt.paused {
 			ctrl.SetPaused(name, paused)
 		}
 	}
 }
 
-// SetLive updates live status.
-func (s *Server) SetLive(live bool) {
+// SetLive updates live status for a streamer.
+func (s *Server) SetLive(streamerName string, live bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.live = live
+	rt := s.getOrCreateRuntime(streamerName)
+	rt.live = live
+}
+
+func (s *Server) getOrCreateRuntime(name string) *streamerRuntime {
+	rt, ok := s.streamers[name]
+	if !ok {
+		rt = &streamerRuntime{paused: make(map[string]bool)}
+		s.streamers[name] = rt
+	}
+	return rt
 }
 
 func (s *Server) Start() {
@@ -122,8 +149,8 @@ func (s *Server) Start() {
 	mux.HandleFunc("/api/admin/bili-account", s.requireAdmin(s.handleBiliAccount))
 	mux.HandleFunc("/api/admin/bili-qr/generate", s.requireAdmin(s.handleBiliQRGenerate))
 	mux.HandleFunc("/api/admin/bili-qr/poll", s.requireAdmin(s.handleBiliQRPoll))
-	mux.HandleFunc("/api/admin/streamer", s.requireAdmin(s.handleAdminStreamer))
-	mux.HandleFunc("/api/admin/outputs", s.requireAdmin(s.handleAdminOutputs))
+	mux.HandleFunc("/api/admin/streamers", s.requireAdmin(s.handleAdminStreamers))
+	mux.HandleFunc("/api/admin/streamer-outputs", s.requireAdmin(s.handleAdminStreamerOutputs))
 
 	addr := fmt.Sprintf(":%d", s.port)
 	slog.Info("web control panel started", "addr", addr)
@@ -265,39 +292,82 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(u)
 }
 
-// --- Status handler (replaces old rooms handler) ---
+// --- Status handler (multi-streamer) ---
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	live := s.live
-	ctrl := s.ctrl
-	s.mu.RUnlock()
-
-	state := RoomState{
-		RoomID:   s.cfg.Streamer.RoomID,
-		Name:     s.cfg.Streamer.Name,
-		Live:     live,
-		BotNames: s.pool.Names(),
+	u := s.getUser(r)
+	if u == nil {
+		http.Error(w, `{"error":"unauthorized"}`, 401)
+		return
 	}
 
-	if ctrl != nil {
-		state.Outputs = ctrl.OutputStates()
-	} else {
-		// Show configured outputs even when offline, with server-level pause state
-		state.Outputs = make([]controller.OutputState, len(s.cfg.Outputs))
-		for i, o := range s.cfg.Outputs {
-			state.Outputs[i] = controller.OutputState{
-				Name:       o.Name,
-				Platform:   o.Platform,
-				TargetLang: o.TargetLang,
-				BotName:    o.Account,
-				Paused:     s.paused[o.Name],
+	// Get user's assigned rooms for filtering
+	var userRooms map[int64]bool
+	if !u.IsAdmin {
+		rooms, _ := s.store.GetUserRooms(u.ID)
+		if len(rooms) > 0 {
+			userRooms = make(map[int64]bool)
+			for _, rid := range rooms {
+				userRooms[rid] = true
 			}
 		}
 	}
 
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var streamers []StreamerState
+	for _, sc := range s.cfg.Streamers {
+		// Filter by user permissions
+		if userRooms != nil && !userRooms[sc.RoomID] {
+			continue
+		}
+
+		state := StreamerState{
+			RoomID: sc.RoomID,
+			Name:   sc.Name,
+		}
+
+		rt := s.streamers[sc.Name]
+		if rt != nil {
+			state.Live = rt.live
+			if rt.ctrl != nil {
+				state.Outputs = rt.ctrl.OutputStates()
+			}
+		}
+
+		// If no controller, show configured outputs with server-level pause state
+		if state.Outputs == nil {
+			state.Outputs = make([]controller.OutputState, len(sc.Outputs))
+			for i, o := range sc.Outputs {
+				paused := false
+				if rt != nil {
+					paused = rt.paused[o.Name]
+				}
+				state.Outputs[i] = controller.OutputState{
+					Name:       o.Name,
+					Platform:   o.Platform,
+					TargetLang: o.TargetLang,
+					BotName:    o.Account,
+					Paused:     paused,
+				}
+			}
+		}
+
+		streamers = append(streamers, state)
+	}
+
+	if streamers == nil {
+		streamers = []StreamerState{}
+	}
+
+	resp := StatusResponse{
+		Streamers: streamers,
+		BotNames:  s.pool.Names(),
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(state)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
@@ -307,34 +377,31 @@ func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	streamerName := r.URL.Query().Get("streamer")
 	outputName := r.URL.Query().Get("output")
-	if outputName == "" {
-		http.Error(w, `{"error":"output name required"}`, 400)
+	if streamerName == "" || outputName == "" {
+		http.Error(w, `{"error":"streamer and output name required"}`, 400)
 		return
 	}
 
-	s.mu.RLock()
-	ctrl := s.ctrl
-	s.mu.RUnlock()
-
-	// Toggle pause state (server-level, persists across streams)
 	s.mu.Lock()
-	s.paused[outputName] = !s.paused[outputName]
-	paused := s.paused[outputName]
+	rt := s.getOrCreateRuntime(streamerName)
+	rt.paused[outputName] = !rt.paused[outputName]
+	paused := rt.paused[outputName]
+	ctrl := rt.ctrl
 	s.mu.Unlock()
 
-	// Sync to controller if active
 	if ctrl != nil {
 		ctrl.SetPaused(outputName, paused)
 	}
 	if paused {
-		s.audit(r, "暂停翻译", fmt.Sprintf("输出 %s", outputName))
+		s.audit(r, "暂停翻译", fmt.Sprintf("%s / %s", streamerName, outputName))
 	} else {
-		s.audit(r, "恢复翻译", fmt.Sprintf("输出 %s", outputName))
+		s.audit(r, "恢复翻译", fmt.Sprintf("%s / %s", streamerName, outputName))
 	}
-	slog.Info("output toggled", "output", outputName, "paused", paused, "user", u.Username)
+	slog.Info("output toggled", "streamer", streamerName, "output", outputName, "paused", paused, "user", u.Username)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"output": outputName, "paused": paused})
+	json.NewEncoder(w).Encode(map[string]any{"streamer": streamerName, "output": outputName, "paused": paused})
 }
 
 // --- Admin handlers ---
@@ -450,7 +517,6 @@ func (s *Server) handleAdminUser(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAdminAllAccounts(w http.ResponseWriter, r *http.Request) {
 	names := s.pool.Names()
-	// Also include DB accounts
 	if dbAccounts, err := s.store.ListBiliAccountSummaries(); err == nil {
 		seen := make(map[string]bool)
 		for _, n := range names {
@@ -625,6 +691,179 @@ func (s *Server) notifyAccountChange() {
 	}
 }
 
+// --- Admin Streamer Management ---
+
+// handleAdminStreamers handles GET (list), POST (add/update), DELETE (remove) streamers.
+func (s *Server) handleAdminStreamers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case "GET":
+		json.NewEncoder(w).Encode(s.cfg.Streamers)
+
+	case "POST":
+		var req config.StreamerConfig
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid json"}`, 400)
+			return
+		}
+		if req.Name == "" || req.RoomID == 0 {
+			http.Error(w, `{"error":"name and room_id required"}`, 400)
+			return
+		}
+		if req.SourceLang == "" {
+			req.SourceLang = "ja-JP"
+		}
+		if req.Outputs == nil {
+			req.Outputs = []config.OutputConfig{}
+		}
+		// Update existing or add new
+		found := false
+		for i, sc := range s.cfg.Streamers {
+			if sc.Name == req.Name {
+				s.cfg.Streamers[i] = req
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.cfg.Streamers = append(s.cfg.Streamers, req)
+		}
+		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			http.Error(w, `{"error":"save failed"}`, 500)
+			return
+		}
+		s.mu.Lock()
+		s.getOrCreateRuntime(req.Name)
+		s.mu.Unlock()
+		action := "add_streamer"
+		if found {
+			action = "update_streamer"
+		}
+		s.audit(r, action, fmt.Sprintf("name=%s room=%d", req.Name, req.RoomID))
+		if s.onStreamerChange != nil {
+			go s.onStreamerChange()
+		}
+		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+
+	case "DELETE":
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			http.Error(w, `{"error":"name required"}`, 400)
+			return
+		}
+		newStreamers := make([]config.StreamerConfig, 0)
+		for _, sc := range s.cfg.Streamers {
+			if sc.Name != name {
+				newStreamers = append(newStreamers, sc)
+			}
+		}
+		s.cfg.Streamers = newStreamers
+		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			http.Error(w, `{"error":"save failed"}`, 500)
+			return
+		}
+		s.mu.Lock()
+		delete(s.streamers, name)
+		s.mu.Unlock()
+		s.audit(r, "delete_streamer", name)
+		if s.onStreamerChange != nil {
+			go s.onStreamerChange()
+		}
+		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, 405)
+	}
+}
+
+// handleAdminStreamerOutputs manages outputs for a specific streamer.
+func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	streamerName := r.URL.Query().Get("streamer")
+	if streamerName == "" {
+		http.Error(w, `{"error":"streamer name required"}`, 400)
+		return
+	}
+
+	// Find streamer
+	var sc *config.StreamerConfig
+	for i := range s.cfg.Streamers {
+		if s.cfg.Streamers[i].Name == streamerName {
+			sc = &s.cfg.Streamers[i]
+			break
+		}
+	}
+	if sc == nil {
+		http.Error(w, `{"error":"streamer not found"}`, 404)
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		json.NewEncoder(w).Encode(sc.Outputs)
+
+	case "POST", "PUT":
+		var req config.OutputConfig
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid json"}`, 400)
+			return
+		}
+		if req.Name == "" {
+			http.Error(w, `{"error":"name required"}`, 400)
+			return
+		}
+		if req.Platform == "" {
+			req.Platform = "bilibili"
+		}
+		found := false
+		for i, o := range sc.Outputs {
+			if o.Name == req.Name {
+				sc.Outputs[i] = req
+				found = true
+				break
+			}
+		}
+		if !found {
+			sc.Outputs = append(sc.Outputs, req)
+		}
+		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			http.Error(w, `{"error":"save failed"}`, 500)
+			return
+		}
+		action := "add_output"
+		if found {
+			action = "update_output"
+		}
+		s.audit(r, action, fmt.Sprintf("%s / %s lang=%s", streamerName, req.Name, req.TargetLang))
+		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+
+	case "DELETE":
+		outputName := r.URL.Query().Get("name")
+		if outputName == "" {
+			http.Error(w, `{"error":"output name required"}`, 400)
+			return
+		}
+		newOutputs := make([]config.OutputConfig, 0)
+		for _, o := range sc.Outputs {
+			if o.Name != outputName {
+				newOutputs = append(newOutputs, o)
+			}
+		}
+		sc.Outputs = newOutputs
+		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			http.Error(w, `{"error":"save failed"}`, 500)
+			return
+		}
+		s.audit(r, "delete_output", fmt.Sprintf("%s / %s", streamerName, outputName))
+		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, 405)
+	}
+}
+
 // --- Audit ---
 
 func (s *Server) handleAdminAudit(w http.ResponseWriter, r *http.Request) {
@@ -676,113 +915,4 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, adminHTML)
-}
-
-// handleAdminStreamer GET returns streamer config, POST/PUT updates it.
-func (s *Server) handleAdminStreamer(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if r.Method == "GET" {
-		json.NewEncoder(w).Encode(s.cfg.Streamer)
-		return
-	}
-	if r.Method != "POST" && r.Method != "PUT" {
-		http.Error(w, `{"error":"method not allowed"}`, 405)
-		return
-	}
-	var req struct {
-		Name       string `json:"name"`
-		RoomID     int64  `json:"room_id"`
-		SourceLang string `json:"source_lang"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid json"}`, 400)
-		return
-	}
-	if req.RoomID == 0 {
-		http.Error(w, `{"error":"room_id required"}`, 400)
-		return
-	}
-	s.cfg.Streamer.Name = req.Name
-	s.cfg.Streamer.RoomID = req.RoomID
-	if req.SourceLang != "" {
-		s.cfg.Streamer.SourceLang = req.SourceLang
-	}
-	if err := config.Save(s.cfgPath, s.cfg); err != nil {
-		slog.Error("save config failed", "err", err)
-		http.Error(w, `{"error":"save failed"}`, 500)
-		return
-	}
-	s.store.Log(0, "admin", "update_streamer", fmt.Sprintf("room=%d name=%s", req.RoomID, req.Name), r.RemoteAddr)
-	if s.onStreamerChange != nil {
-		go s.onStreamerChange()
-	}
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
-}
-
-// handleAdminOutputs GET returns outputs, POST adds, PUT updates, DELETE removes.
-func (s *Server) handleAdminOutputs(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if r.Method == "GET" {
-		json.NewEncoder(w).Encode(s.cfg.Outputs)
-		return
-	}
-	if r.Method == "DELETE" {
-		name := r.URL.Query().Get("name")
-		if name == "" {
-			http.Error(w, `{"error":"name required"}`, 400)
-			return
-		}
-		newOutputs := make([]config.OutputConfig, 0)
-		for _, o := range s.cfg.Outputs {
-			if o.Name != name {
-				newOutputs = append(newOutputs, o)
-			}
-		}
-		s.cfg.Outputs = newOutputs
-		if err := config.Save(s.cfgPath, s.cfg); err != nil {
-			http.Error(w, `{"error":"save failed"}`, 500)
-			return
-		}
-		s.store.Log(0, "admin", "delete_output", name, r.RemoteAddr)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
-		return
-	}
-	if r.Method == "POST" || r.Method == "PUT" {
-		var req config.OutputConfig
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, `{"error":"invalid json"}`, 400)
-			return
-		}
-		if req.Name == "" {
-			http.Error(w, `{"error":"name required"}`, 400)
-			return
-		}
-		if req.Platform == "" {
-			req.Platform = "bilibili"
-		}
-		// Update existing or add new
-		found := false
-		for i, o := range s.cfg.Outputs {
-			if o.Name == req.Name {
-				s.cfg.Outputs[i] = req
-				found = true
-				break
-			}
-		}
-		if !found {
-			s.cfg.Outputs = append(s.cfg.Outputs, req)
-		}
-		if err := config.Save(s.cfgPath, s.cfg); err != nil {
-			http.Error(w, `{"error":"save failed"}`, 500)
-			return
-		}
-		action := "add_output"
-		if found {
-			action = "update_output"
-		}
-		s.store.Log(0, "admin", action, fmt.Sprintf("name=%s platform=%s lang=%s room=%d", req.Name, req.Platform, req.TargetLang, req.RoomID), r.RemoteAddr)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
-		return
-	}
-	http.Error(w, `{"error":"method not allowed"}`, 405)
 }

@@ -17,15 +17,15 @@ import (
 // Agent captures audio from a stream, runs STT, and fans out
 // translations to the Controller.
 type Agent struct {
-	cfg        *config.Config
+	streamer   config.StreamerConfig
 	translator *translate.GeminiTranslator
 	ctrl       *controller.Controller
 }
 
-// New creates a new Agent.
-func New(cfg *config.Config, translator *translate.GeminiTranslator, ctrl *controller.Controller) *Agent {
+// New creates a new Agent for a specific streamer.
+func New(streamer config.StreamerConfig, translator *translate.GeminiTranslator, ctrl *controller.Controller) *Agent {
 	return &Agent{
-		cfg:        cfg,
+		streamer:   streamer,
 		translator: translator,
 		ctrl:       ctrl,
 	}
@@ -34,7 +34,7 @@ func New(cfg *config.Config, translator *translate.GeminiTranslator, ctrl *contr
 // Run starts the Agent pipeline: stream capture → STT → translate → controller.
 // Blocks until ctx is cancelled or the stream ends.
 func (a *Agent) Run(ctx context.Context) error {
-	sc := a.cfg.Streamer
+	sc := a.streamer
 
 	// 1. Get live stream URL
 	streamURL, err := stream.GetStreamURL(ctx, sc.RoomID)
@@ -122,7 +122,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		translateWg.Add(1)
 		go func(s int, text, lang string) {
 			defer translateWg.Done()
-			controller.TranslateAndSubmit(ctx, a.ctrl, a.translator, s, text, lang, a.cfg.Outputs)
+			controller.TranslateAndSubmit(ctx, a.ctrl, a.translator, s, text, lang, sc.Outputs)
 		}(currentSeq, result.Text, result.Language)
 	}
 
