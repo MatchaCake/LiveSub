@@ -47,7 +47,8 @@ func (b *BilibiliBot) Platform() string { return "bilibili" }
 func (b *BilibiliBot) Name() string     { return b.name }
 func (b *BilibiliBot) Available() bool   { return b.sessdata != "" }
 func (b *BilibiliBot) RoomID() int64    { return b.roomID }
-func (b *BilibiliBot) DanmakuMax() int  { return b.danmakuMax }
+func (b *BilibiliBot) DanmakuMax() int    { return b.danmakuMax }
+func (b *BilibiliBot) MaxMessageLen() int { return b.danmakuMax }
 
 // SetRoomID updates the target room for this bot.
 func (b *BilibiliBot) SetRoomID(roomID int64) {
@@ -64,31 +65,13 @@ func (b *BilibiliBot) Send(ctx context.Context, roomID int64, msg string) error 
 	if roomID == 0 {
 		roomID = b.roomID
 	}
-	maxLen := b.danmakuMax
 	b.mu.Unlock()
 
-	if len([]rune(msg)) <= maxLen {
-		err := sender.Send(ctx, roomID, msg)
-		if err != nil {
-			slog.Warn("danmaku send failed", "bot", b.name, "room", roomID, "error", err)
-		}
-		return err
+	err := sender.Send(ctx, roomID, msg)
+	if err != nil {
+		slog.Warn("danmaku send failed", "bot", b.name, "room", roomID, "error", err)
 	}
-
-	// Split into chunks respecting rune boundaries
-	runes := []rune(msg)
-	for i := 0; i < len(runes); i += maxLen {
-		end := i + maxLen
-		if end > len(runes) {
-			end = len(runes)
-		}
-		chunk := string(runes[i:end])
-		if err := sender.Send(ctx, roomID, chunk); err != nil {
-			slog.Warn("danmaku send failed", "bot", b.name, "room", roomID, "error", err)
-			return err
-		}
-	}
-	return nil
+	return err
 }
 
 // UpdateCredentials replaces the bot's credentials and rebuilds the sender.

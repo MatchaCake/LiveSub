@@ -214,9 +214,6 @@ func (c *Controller) run(ctx context.Context) {
 					continue
 				}
 
-				// Wrap with prefix/suffix
-				wrapped := o.Prefix + txt + o.Suffix
-
 				// Send via bot to output's room (0 = streamer's room)
 				b := c.pool.Get(o.Account)
 				if b == nil {
@@ -228,13 +225,47 @@ func (c *Controller) run(ctx context.Context) {
 				if targetRoom == 0 {
 					targetRoom = c.streamerRoomID
 				}
-				slog.Info("sending", "output", o.Name, "bot", b.Name(), "room", targetRoom, "text", wrapped)
-				if err := b.Send(ctx, targetRoom, wrapped); err != nil {
-					slog.Error("send failed", "output", o.Name, "bot", b.Name(), "err", err)
+
+				// Split text into chunks, each wrapped with prefix/suffix
+				chunks := splitWithWrap(txt, o.Prefix, o.Suffix, b.MaxMessageLen())
+				for _, chunk := range chunks {
+					slog.Info("sending", "output", o.Name, "bot", b.Name(), "room", targetRoom, "text", chunk)
+					if err := b.Send(ctx, targetRoom, chunk); err != nil {
+						slog.Error("send failed", "output", o.Name, "bot", b.Name(), "err", err)
+						break
+					}
 				}
 			}
 		}
 	}
+}
+
+// splitWithWrap splits text into chunks where each chunk is wrapped with prefix+suffix
+// and fits within maxLen runes. If maxLen <= 0, returns a single wrapped string.
+func splitWithWrap(text, prefix, suffix string, maxLen int) []string {
+	wrapped := prefix + text + suffix
+	if maxLen <= 0 || len([]rune(wrapped)) <= maxLen {
+		return []string{wrapped}
+	}
+
+	prefixRunes := len([]rune(prefix))
+	suffixRunes := len([]rune(suffix))
+	contentMax := maxLen - prefixRunes - suffixRunes
+	if contentMax <= 0 {
+		// prefix+suffix already exceed maxLen, just send wrapped
+		return []string{wrapped}
+	}
+
+	runes := []rune(text)
+	var chunks []string
+	for i := 0; i < len(runes); i += contentMax {
+		end := i + contentMax
+		if end > len(runes) {
+			end = len(runes)
+		}
+		chunks = append(chunks, prefix+string(runes[i:end])+suffix)
+	}
+	return chunks
 }
 
 // isLangMatch checks if detected language matches a target language code.
