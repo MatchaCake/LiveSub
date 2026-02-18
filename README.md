@@ -102,6 +102,19 @@ livesub run configs/config.yaml
 
 Open `http://localhost:8899` for the control panel.
 
+### Docker
+
+```bash
+# Build image
+docker build -t livesub .
+
+# Run (mount your configs directory)
+docker run -d -p 8899:8899 -v /path/to/configs:/app/configs livesub
+
+# Custom config path
+docker run -d -p 8899:8899 -v /my/config.yaml:/app/my.yaml livesub my.yaml
+```
+
 ### Systemd
 
 ```bash
@@ -160,10 +173,6 @@ configs/
 ```
 cmd/livesub/             CLI + pipeline orchestration
 internal/
-  audio/
-    capture.go           ffmpeg PCM capture
-    stream_url.go        Bilibili stream URL fetcher
-    pausable_reader.go   Discard audio when paused
   auth/
     store.go             SQLite user/session management
     bilibili.go          QR login + account management
@@ -172,9 +181,7 @@ internal/
     config.go            YAML config with defaults
     watcher.go           fsnotify hot reload
   danmaku/
-    bilibili.go          Multi-account sender (rate-limited, auto-split)
-  monitor/
-    bilibili.go          Live status poller (thread-safe)
+    bilibili.go          Multi-account sender (wraps bilibili_dm_lib)
   stt/
     google.go            Google STT streaming (auto-reconnect, backoff)
   transcript/
@@ -184,7 +191,13 @@ internal/
   web/
     server.go            HTTP handlers, auth, room control
     pages.go             HTML templates (login, control panel, admin)
+    i18n.go              Client-side i18n (zh/en/ja)
+Dockerfile               Multi-stage build
 ```
+
+### External Libraries
+- [bilibili_dm_lib](https://github.com/MatchaCake/bilibili_dm_lib) — Danmaku sending
+- [bilibili_stream_lib](https://github.com/MatchaCake/bilibili_stream_lib) — Room monitoring + stream capture
 
 ## Cost
 
