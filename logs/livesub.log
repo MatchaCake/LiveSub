@@ -1508,3 +1508,27 @@ time=2026-02-18T11:24:27.793+08:00 level=INFO msg="STT final" text=" ハム太�
 time=2026-02-18T11:24:27.793+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" ハム太郎とっとこうた？" len=12 musicScore=0.91 conf=0.22170959413051605
 time=2026-02-18T11:24:33.738+08:00 level=INFO msg="STT final" text=" 聞くが良い。" lang=ja-jp confidence=0.49340835213661194
 time=2026-02-18T11:24:33.738+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" 聞くが良い。" len=7 musicScore=0.89 conf=0.49340835213661194
+time=2026-02-18T11:24:49.059+08:00 level=INFO msg="STT final" text=" 平気？" lang=ja-jp confidence=0.23046299815177917
+time=2026-02-18T11:24:49.059+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" 平気？" len=4 musicScore=0.87 conf=0.23046299815177917
+time=2026-02-18T11:25:10.901+08:00 level=INFO msg="STT final" text="走るよ。ハム太郎 スニーカー 走るよ。ハム太郎 大好きなのは広いのだね。やっぱり走るよ。ハム太郎" lang=ja-jp confidence=0.6449544429779053
+time=2026-02-18T11:25:10.901+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text="走るよ。ハム太郎 スニーカー 走るよ。ハム太郎 大好きなのは広いのだね。やっぱり走るよ。ハム太郎" len=48 musicScore=0.92 conf=0.6449544429779053
+time=2026-02-18T11:25:30.334+08:00 level=INFO msg="STT final" text=" と。あと回るよ。はめたろう。感謝を回るよ。はめたろう。大好きなのは ひまわりの為 変わると嬉しい。ハム太郎" lang=ja-jp confidence=0.5582457184791565
+time=2026-02-18T11:25:30.334+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" と。あと回るよ。はめたろう。感謝を回るよ。はめたろう。大好きなのは ひまわりの為 変わると嬉しい。ハム太郎" len=54 musicScore=0.88 conf=0.5582457184791565
+time=2026-02-18T11:25:50.624+08:00 level=INFO msg="STT final" text=" 眠いよ。はめたろう。どこでも眠るよ。ハム太郎 大好きなのは ひまわりの種 やっぱり眠るよ。跳ねたろう。" lang=ja-jp confidence=0.6995016932487488
+time=2026-02-18T11:25:50.624+08:00 level=INFO msg="🎵 singing mode ON" name="Test Stream" curLen=52 prevLen=54
+time=2026-02-18T11:25:50.624+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" 眠いよ。はめたろう。どこでも眠るよ。ハム太郎 大好きなのは ひまわりの種 やっぱり眠るよ。跳ねたろう。" len=52 musicScore=0.90 conf=0.6995016932487488
+time=2026-02-18T11:26:00.416+08:00 level=INFO msg="STT final" text="" lang=ja-jp confidence=0
+time=2026-02-18T11:26:00.416+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text="" len=0 musicScore=0.70 conf=0
+time=2026-02-18T11:26:06.529+08:00 level=INFO msg="STT final" text=何かが開いたね。 lang=ja-jp confidence=0.706057071685791
+time=2026-02-18T11:26:06.529+08:00 level=INFO msg="🎤 singing mode OFF" name="Test Stream" curLen=8 prevLen=0
+time=2026-02-18T11:26:06.529+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=何かが開いたね。 len=8 musicScore=0.92 conf=0.706057071685791
+time=2026-02-18T11:26:11.541+08:00 level=INFO msg="STT final" text="" lang=ja-jp confidence=0
+time=2026-02-18T11:26:11.542+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text="" len=0 musicScore=0.74 conf=0
+time=2026-02-18T11:26:21.951+08:00 level=INFO msg="STT final" text=何かがいたね。元気になった。よかった。沢城みゆきではないってば。 lang=ja-jp confidence=0.7221155166625977
+time=2026-02-18T11:26:21.951+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=何かがいたね。元気になった。よかった。沢城みゆきではないってば。 len=32 musicScore=0.95 conf=0.7221155166625977
+time=2026-02-18T11:26:30.089+08:00 level=INFO msg="STT final" text=" 君ならできると思った。変な期待しないでくれる。じゃありさの炎 行くよ。" lang=ja-jp confidence=0.6241694092750549
+time=2026-02-18T11:26:30.089+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=" 君ならできると思った。変な期待しないでくれる。じゃありさの炎 行くよ。" len=36 musicScore=0.98 conf=0.6241694092750549
+time=2026-02-18T11:26:35.164+08:00 level=INFO msg="STT final" text="この後に歌うの なんかやだな。" lang=ja-jp confidence=0.734046459197998
+time=2026-02-18T11:26:35.164+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text="この後に歌うの なんかやだな。" len=15 musicScore=0.82 conf=0.734046459197998
+time=2026-02-18T11:26:47.903+08:00 level=INFO msg="STT final" text=仲がいい存分に。 lang=ja-jp confidence=0.5415114164352417
+time=2026-02-18T11:26:47.903+08:00 level=INFO msg="🎵 skipping" name="Test Stream" reason=fft text=仲がいい存分に。 len=8 musicScore=0.77 conf=0.5415114164352417

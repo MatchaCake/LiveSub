@@ -270,10 +270,7 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 		textLen := len([]rune(result.Text))
 		musicScore := musicDetector.Score()
 
-		// Layer 1: FFT music detection
-		fftSkip := musicScore > highMusicScore
-
-		// Layer 2 (fallback): consecutive long text → singing mode
+		// Layer 1: consecutive long text → singing mode
 		if textLen > longTextThreshold && prevLen > longTextThreshold {
 			if !singing {
 				singing = true
@@ -286,13 +283,8 @@ func runStream(ctx context.Context, cfg *config.Config, sc config.StreamConfig, 
 		}
 		prevLen = textLen
 
-		skip := fftSkip || singing
-		if skip {
-			reason := "fft"
-			if !fftSkip {
-				reason = "singing"
-			}
-			slog.Info("🎵 skipping", "name", sc.Name, "reason", reason,
+		if singing {
+			slog.Info("🎵 skipping", "name", sc.Name, "reason", "singing",
 				"text", result.Text, "len", textLen,
 				"musicScore", fmt.Sprintf("%.2f", musicScore),
 				"conf", result.Confidence)
