@@ -234,6 +234,28 @@ function renderStatus(data) {
       });
     }
     card.appendChild(outputsDiv);
+
+    // Output management toggle
+    var mgmtBtn = document.createElement('button');
+    mgmtBtn.className = 'link-btn';
+    mgmtBtn.style.cssText = 'margin-top:12px;font-size:12px;';
+    mgmtBtn.textContent = '⚙️ ' + t('manage_outputs');
+    mgmtBtn.setAttribute('data-streamer', s.name);
+    var mgmtPanel = document.createElement('div');
+    mgmtPanel.style.display = 'none';
+    mgmtPanel.className = 'output-mgmt';
+    mgmtBtn.onclick = function() {
+      var panel = this.nextElementSibling;
+      if (panel.style.display === 'none') {
+        panel.style.display = '';
+        loadMyOutputs(s.name, panel);
+      } else {
+        panel.style.display = 'none';
+      }
+    };
+    card.appendChild(mgmtBtn);
+    card.appendChild(mgmtPanel);
+
     el.appendChild(card);
   });
 }
@@ -241,6 +263,89 @@ function renderStatus(data) {
 async function toggle(streamerName, outputName) {
   await fetch('/api/toggle?streamer=' + encodeURIComponent(streamerName) + '&output=' + encodeURIComponent(outputName));
   fetchStatus();
+}
+
+var myAccounts = null;
+async function ensureMyAccounts() {
+  if (myAccounts !== null) return;
+  var res = await fetch('/api/my/accounts');
+  myAccounts = await res.json() || [];
+}
+
+async function loadMyOutputs(streamerName, panel) {
+  await ensureMyAccounts();
+  var res = await fetch('/api/my/streamer-outputs?streamer=' + encodeURIComponent(streamerName));
+  var outputs = await res.json() || [];
+  panel.innerHTML = '';
+
+  var style = 'background:#0d1b3e;border-radius:8px;padding:12px;margin-top:10px;';
+  panel.style.cssText += style;
+
+  // List existing outputs
+  outputs.forEach(function(o) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;';
+    row.innerHTML = '<span style="color:#eee;min-width:80px;">' + escapeHTML(o.name) + '</span>' +
+      '<span style="color:#888;">' + escapeHTML(o.target_lang || '原文') + '</span>' +
+      '<span style="color:#888;">' + escapeHTML(o.account || '') + '</span>';
+    var delBtn = document.createElement('button');
+    delBtn.style.cssText = 'margin-left:auto;padding:2px 8px;border:1px solid #555;border-radius:4px;background:transparent;color:#e94560;cursor:pointer;font-size:11px;';
+    delBtn.textContent = '✕';
+    delBtn.onclick = async function() {
+      if (!confirm(t('confirm_del_output') + ' ' + o.name + '?')) return;
+      await fetch('/api/my/streamer-outputs?streamer=' + encodeURIComponent(streamerName) + '&name=' + encodeURIComponent(o.name), {method:'DELETE'});
+      loadMyOutputs(streamerName, panel);
+      fetchStatus();
+    };
+    row.appendChild(delBtn);
+    panel.appendChild(row);
+  });
+
+  // Add form
+  var form = document.createElement('div');
+  form.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;';
+  var inputStyle = 'padding:5px 8px;border:1px solid #333;border-radius:4px;background:#0f3460;color:#eee;font-size:12px;';
+
+  form.innerHTML = '<input type="text" placeholder="' + t('name') + '" style="' + inputStyle + 'width:80px;" class="mo-name">' +
+    '<select style="' + inputStyle + '" class="mo-lang">' +
+      '<option value="">(原文)</option><option value="zh">中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option>' +
+    '</select>' +
+    '<select style="' + inputStyle + '" class="mo-acct">' +
+      '<option value="">(' + t('select_account') + ')</option>' +
+      myAccounts.map(function(a) { return '<option value="' + escapeHTML(a) + '">' + escapeHTML(a) + '</option>'; }).join('') +
+    '</select>' +
+    '<input type="text" placeholder="前缀" style="' + inputStyle + 'width:50px;" class="mo-prefix">' +
+    '<input type="text" placeholder="后缀" style="' + inputStyle + 'width:50px;" class="mo-suffix">';
+
+  var addBtn = document.createElement('button');
+  addBtn.style.cssText = 'padding:5px 12px;border:none;border-radius:4px;background:#4ecca3;color:#000;cursor:pointer;font-size:12px;font-weight:bold;';
+  addBtn.textContent = '+';
+  addBtn.onclick = async function() {
+    var name = form.querySelector('.mo-name').value.trim();
+    if (!name) return;
+    var body = {
+      name: name,
+      platform: 'bilibili',
+      target_lang: form.querySelector('.mo-lang').value,
+      account: form.querySelector('.mo-acct').value,
+      room_id: 0,
+      prefix: form.querySelector('.mo-prefix').value,
+      suffix: form.querySelector('.mo-suffix').value
+    };
+    var r = await fetch('/api/my/streamer-outputs?streamer=' + encodeURIComponent(streamerName), {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+    });
+    if (r.ok) {
+      form.querySelector('.mo-name').value = '';
+      loadMyOutputs(streamerName, panel);
+      fetchStatus();
+    } else {
+      var d = await r.json();
+      alert(d.error || 'failed');
+    }
+  };
+  form.appendChild(addBtn);
+  panel.appendChild(form);
 }
 
 function onLangChange() { fetchStatus(); }
