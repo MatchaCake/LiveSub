@@ -216,7 +216,8 @@ function renderStatus(data) {
 
         var oi = document.createElement('div');
         oi.className = 'output-info';
-        oi.textContent = (o.platform || '') + ' | ' + (o.target_lang || t('source_text')) + ' | ' + t('bot_label') + ' ' + (o.bot_name || '');
+        var botLabel = o.bot_names && o.bot_names.length > 1 ? o.bot_names.join(', ') + ' (' + o.bot_names.length + t('accounts_suffix') + ')' : (o.bot_name || '');
+        oi.textContent = (o.platform || '') + ' | ' + (o.target_lang || t('source_text')) + ' | ' + t('bot_label') + ' ' + botLabel;
         oc.appendChild(oi);
 
         var os = document.createElement('div');
@@ -481,8 +482,7 @@ const adminHTML = `<!DOCTYPE html>
         <option value="es-ES">Español (es-ES)</option>
         <option value="ru-RU">Русский (ru-RU)</option>
       </select>
-      <select id="outAccount">
-      </select>
+      <div id="outAccounts" style="display:inline-flex;gap:8px;flex-wrap:wrap;align-items:center;border:1px solid #555;border-radius:6px;padding:4px 8px;min-width:120px;"></div>
     </div>
     <div class="form-row">
       <input type="number" id="outRoom" placeholder="房间号 (0=默认)" style="width:120px;">
@@ -687,7 +687,7 @@ async function loadStreamers() {
   }
   renderStreamerSelect();
   if (allStreamers.length > 0) {
-    loadStreamerOutputs();
+    await loadStreamerOutputs();
   }
 }
 
@@ -794,7 +794,8 @@ async function loadStreamerOutputs() {
     actions.appendChild(makeBtn(t('edit'), 'small-btn', function() { editOutput(o.name); }));
     actions.appendChild(document.createTextNode(' '));
     actions.appendChild(makeBtn(t('delete'), 'small-btn danger', function() { deleteOutput(o.name); }));
-    return [o.name, o.platform||'bilibili', o.target_lang||'(原文)', o.account||'', String(o.room_id||0), o.prefix||'', o.suffix||'', actions];
+    var acctDisplay = o.accounts && o.accounts.length > 0 ? o.accounts.join(', ') : (o.account || '');
+    return [o.name, o.platform||'bilibili', o.target_lang||'(原文)', acctDisplay, String(o.room_id||0), o.prefix||'', o.suffix||'', actions];
   });
   if (rows.length === 0) {
     var p = document.createElement('p');
@@ -805,18 +806,19 @@ async function loadStreamerOutputs() {
   }
   container.appendChild(buildTable([t('name'), t('platform'), t('target_lang'), t('account'), t('room_id'), t('prefix'), t('suffix'), t('actions')], rows));
 
-  // Populate account dropdown
-  var acctSel = document.getElementById('outAccount');
-  acctSel.textContent = '';
-  var defOpt = document.createElement('option');
-  defOpt.value = '';
-  defOpt.textContent = '(' + t('select_account') + ')';
-  acctSel.appendChild(defOpt);
+  // Populate account checkboxes (pool)
+  var acctDiv = document.getElementById('outAccounts');
+  acctDiv.textContent = '';
   allAccounts.forEach(function(a) {
-    var opt = document.createElement('option');
-    opt.value = a;
-    opt.textContent = a;
-    acctSel.appendChild(opt);
+    var label = document.createElement('label');
+    label.style.cssText = 'display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:13px;';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = a;
+    cb.className = 'outAcctCb';
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(a));
+    acctDiv.appendChild(label);
   });
 }
 
@@ -826,11 +828,13 @@ async function saveOutput() {
   var name = document.getElementById('outName').value.trim();
   var msgEl = document.getElementById('outputMsg');
   if (!name) { msgEl.className = 'msg err'; msgEl.textContent = t('name_required'); return; }
+  var selAccts = Array.from(document.querySelectorAll('.outAcctCb:checked')).map(function(c) { return c.value; });
   var body = {
     name: name,
     platform: document.getElementById('outPlatform').value,
     target_lang: document.getElementById('outLang').value.trim(),
-    account: document.getElementById('outAccount').value,
+    account: selAccts[0] || '',
+    accounts: selAccts,
     room_id: parseInt(document.getElementById('outRoom').value) || 0,
     prefix: document.getElementById('outPrefix').value,
     suffix: document.getElementById('outSuffix').value
@@ -842,8 +846,7 @@ async function saveOutput() {
   if (res.ok) {
     msgEl.className = 'msg ok'; msgEl.textContent = t('output_saved') + ': ' + name;
     clearOutputForm();
-    loadStreamerOutputs();
-    loadStreamers();
+    await loadStreamers();
   } else {
     var data = await res.json();
     msgEl.className = 'msg err'; msgEl.textContent = data.error || t('create_failed');
@@ -856,15 +859,9 @@ function editOutput(name) {
   document.getElementById('outName').value = o.name;
   document.getElementById('outPlatform').value = o.platform || 'bilibili';
   document.getElementById('outLang').value = o.target_lang || '';
-  var sel = document.getElementById('outAccount');
-  sel.value = o.account || '';
-  if (sel.value !== (o.account || '') && o.account) {
-    var opt = document.createElement('option');
-    opt.value = o.account;
-    opt.textContent = o.account;
-    sel.appendChild(opt);
-    sel.value = o.account;
-  }
+  // Check accounts in pool
+  var pool = o.accounts && o.accounts.length > 0 ? o.accounts : (o.account ? [o.account] : []);
+  document.querySelectorAll('.outAcctCb').forEach(function(cb) { cb.checked = pool.indexOf(cb.value) !== -1; });
   document.getElementById('outRoom').value = o.room_id || 0;
   document.getElementById('outPrefix').value = o.prefix || '';
   document.getElementById('outSuffix').value = o.suffix || '';
@@ -875,14 +872,13 @@ async function deleteOutput(name) {
   var streamerName = document.getElementById('outputStreamerSelect').value;
   if (!confirm(t('confirm_del_output') + ' ' + name + '?')) return;
   await fetch((isAdmin ? '/api/admin/streamer-outputs' : '/api/my/streamer-outputs') + '?streamer=' + encodeURIComponent(streamerName) + '&name=' + encodeURIComponent(name), {method: 'DELETE'});
-  loadStreamerOutputs();
-  loadStreamers();
+  await loadStreamers();
 }
 
 function clearOutputForm() {
   document.getElementById('outName').value = '';
   document.getElementById('outLang').selectedIndex = 0;
-  document.getElementById('outAccount').selectedIndex = 0;
+  document.querySelectorAll('.outAcctCb').forEach(function(c) { c.checked = false; });
   document.getElementById('outRoom').value = '';
   document.getElementById('outPrefix').value = '【';
   document.getElementById('outSuffix').value = '】';

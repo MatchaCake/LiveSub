@@ -37,14 +37,27 @@ type TranslationConfig struct {
 }
 
 type OutputConfig struct {
-	Name       string `yaml:"name" json:"name"`
-	Platform   string `yaml:"platform" json:"platform"`
-	TargetLang string `yaml:"target_lang" json:"target_lang"`
-	Account    string `yaml:"account" json:"account"`
-	RoomID     int64  `yaml:"room_id" json:"room_id"`
-	Prefix     string `yaml:"prefix" json:"prefix"`
-	Suffix     string `yaml:"suffix" json:"suffix"`
-	ShowSeq    bool   `yaml:"show_seq" json:"show_seq"`
+	Name       string   `yaml:"name" json:"name"`
+	Platform   string   `yaml:"platform" json:"platform"`
+	TargetLang string   `yaml:"target_lang" json:"target_lang"`
+	Account    string   `yaml:"account" json:"account"`       // single account (backward compat)
+	Accounts   []string `yaml:"accounts" json:"accounts"`     // account pool for round-robin
+	RoomID     int64    `yaml:"room_id" json:"room_id"`
+	Prefix     string   `yaml:"prefix" json:"prefix"`
+	Suffix     string   `yaml:"suffix" json:"suffix"`
+	ShowSeq    bool     `yaml:"show_seq" json:"show_seq"`
+}
+
+// AccountPool returns the effective list of accounts for this output.
+// If Accounts is set, use it; otherwise fall back to single Account.
+func (o *OutputConfig) AccountPool() []string {
+	if len(o.Accounts) > 0 {
+		return o.Accounts
+	}
+	if o.Account != "" {
+		return []string{o.Account}
+	}
+	return nil
 }
 
 type BotConfig struct {
