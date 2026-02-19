@@ -514,12 +514,8 @@ func (s *Server) handleToggleAutoStart(w http.ResponseWriter, r *http.Request) {
 				if s.cfg.Streamers[i].Outputs[j].Name == outputName {
 					s.cfg.Streamers[i].Outputs[j].AutoStart = !s.cfg.Streamers[i].Outputs[j].AutoStart
 					newVal := s.cfg.Streamers[i].Outputs[j].AutoStart
-					// Update runtime pause state if not live
+					// Only update controller's AutoStart field if active
 					rt := s.streamers[streamerName]
-					if rt != nil && !rt.live {
-						rt.paused[outputName] = !newVal
-					}
-					// Update controller state if active
 					if rt != nil && rt.ctrl != nil {
 						if st, ok := rt.ctrl.GetOutputState(outputName); ok {
 							st.AutoStart = newVal
