@@ -8,9 +8,11 @@ Real-time live stream translator — captures audio, transcribes with Google STT
 - **Multi-output** — Per-streamer outputs: different languages, rooms, bots, prefix/suffix per output
 - **Live detection** — Auto-starts/stops translation when streamers go live (30s polling)
 - **Real-time STT** — Google Cloud Speech-to-Text streaming with auto-reconnect & exponential backoff
-- **AI translation** — Gemini Flash for fast, context-aware translation with language detection
-- **Multi-account danmaku** — Bot pool with per-output account assignment
+- **AI translation** — Gemini 2.5 Flash-Lite for fast, context-aware translation with language detection
+- **Multi-account danmaku** — Bot pool with per-output account assignment and round-robin delivery
+- **Danmaku commands** — `/off` `/on` `/list` `/help` commands in live room with UID whitelist
 - **Web control panel** — Pause/resume per output, manage accounts, download transcripts
+- **Persistent sessions** — Login once, stay logged in for 7 days (survives service restarts)
 - **User management** — SQLite-backed auth with admin/user roles, per-room permissions
 - **QR code login** — Add Bilibili accounts by scanning QR code in the web UI
 - **Stream management** — Add/remove streams and outputs from the admin panel
@@ -21,6 +23,8 @@ Real-time live stream translator — captures audio, transcribes with Google STT
 - **Audit log** — Track all user actions (login, toggle, account switch, admin operations)
 - **Hot reload** — Config changes apply without restart
 - **i18n** — Web UI supports Chinese, English, Japanese
+- **WBI auth** — Auto wbi signature for Bilibili danmaku WebSocket (bypasses -352 risk control)
+- **3s delay queue** — Messages buffer before sending with skip/review in UI
 
 ## Architecture
 
@@ -77,7 +81,7 @@ stt:
 
 translation:
   api_key: "your-gemini-api-key"
-  model: "gemini-2.0-flash"
+  model: "gemini-2.5-flash-lite"
 
 bots:
   - name: "bot1"
@@ -161,6 +165,30 @@ sudo systemctl enable --now livesub
 | Admin | All           | All           | All            | Yes   |
 | User  | Assigned only | Assigned only | Assigned rooms | No    |
 
+## Danmaku Commands
+
+Control translation directly from the live room chat. Only whitelisted UIDs can execute commands.
+
+| Command | Alias | Description |
+|---------|-------|-------------|
+| `/off` | `/pause` `/暂停` | Pause all outputs |
+| `/on` | `/resume` `/恢复` | Resume all outputs |
+| `/off <name>` | `/pause <name>` `/暂停 <name>` | Pause specific output |
+| `/on <name>` | `/resume <name>` `/恢复 <name>` | Resume specific output |
+| `/list` | `/列表` | Show outputs with ▶/⏸ status |
+| `/help` | `/帮助` | Show command usage |
+
+Configure per-streamer in `config.yaml`:
+
+```yaml
+streamers:
+  - name: "VTuber A"
+    room_id: 12345
+    command_uids: [857369]    # Bilibili UIDs allowed to use commands
+```
+
+Replies are sent via account pool round-robin for speed and rate-limit avoidance.
+
 ## Transcripts
 
 Each live session generates a CSV file:
@@ -202,6 +230,8 @@ internal/
     pool.go              Thread-safe bot registry
   controller/
     controller.go        Translation routing, ordered sender, pause, text splitting
+  command/
+    handler.go           Danmaku command handler (UID whitelist, /off /on /list /help)
   config/
     config.go            YAML config with defaults + old format migration
     watcher.go           fsnotify hot reload
@@ -224,7 +254,7 @@ Dockerfile               Multi-stage build (golang → debian-slim + ffmpeg)
 
 ### Dependencies
 
-- [bilibili_dm_lib](https://github.com/MatchaCake/bilibili_dm_lib) — Danmaku sending
+- [bilibili_dm_lib](https://github.com/MatchaCake/bilibili_dm_lib) — Danmaku sending + receiving (WBI auth)
 - [bilibili_stream_lib](https://github.com/MatchaCake/bilibili_stream_lib) — Room monitoring + stream capture
 - [cloud.google.com/go/speech](https://pkg.go.dev/cloud.google.com/go/speech) — Google STT
 - [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) — Gemini
