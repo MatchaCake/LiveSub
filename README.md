@@ -2,6 +2,8 @@
 
 Real-time live stream translator — captures audio, transcribes with Google STT, translates with Gemini, and sends translated danmaku to Bilibili.
 
+📖 [User Manual / 使用手册 / ユーザーマニュアル](docs/MANUAL.md)
+
 ## Features
 
 - **Multi-stream** — Translate N live rooms simultaneously with shared worker pool
