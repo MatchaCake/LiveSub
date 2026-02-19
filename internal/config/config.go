@@ -47,6 +47,7 @@ type OutputConfig struct {
 	Prefix     string   `yaml:"prefix" json:"prefix"`
 	Suffix     string   `yaml:"suffix" json:"suffix"`
 	ShowSeq    bool     `yaml:"show_seq" json:"show_seq"`
+	AutoStart  bool     `yaml:"auto_start" json:"auto_start"`
 }
 
 // AccountPool returns the effective list of accounts for this output.

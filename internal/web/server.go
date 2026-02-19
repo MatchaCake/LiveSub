@@ -93,11 +93,11 @@ func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string
 			slog.Info("restored sessions", "count", len(saved))
 		}
 	}
-	// Init runtime state for each configured streamer — all outputs paused by default
+	// Init runtime state — outputs with auto_start enabled start unpaused
 	for _, sc := range cfg.Streamers {
 		p := make(map[string]bool)
 		for _, o := range sc.Outputs {
-			p[o.Name] = true
+			p[o.Name] = !o.AutoStart
 		}
 		s.streamers[sc.Name] = &streamerRuntime{
 			paused: p,
@@ -178,6 +178,7 @@ func (s *Server) Start() {
 	mux.HandleFunc("/ws/status", s.handleWS)
 	mux.HandleFunc("/api/toggle", s.requireAuth(s.handleToggle))
 	mux.HandleFunc("/api/toggle-seq", s.requireAuth(s.handleToggleSeq))
+	mux.HandleFunc("/api/toggle-autostart", s.requireAuth(s.handleToggleAutoStart))
 	mux.HandleFunc("/api/skip", s.requireAuth(s.handleSkip))
 	mux.HandleFunc("/api/me", s.requireAuth(s.handleMe))
 	mux.HandleFunc("/api/transcripts", s.requireAuth(s.handleTranscripts))
@@ -403,6 +404,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 					BotNames:   o.AccountPool(),
 					Paused:     paused,
 					ShowSeq:    o.ShowSeq,
+					AutoStart:  o.AutoStart,
 				}
 			}
 		}
@@ -477,6 +479,41 @@ func (s *Server) handleToggleSeq(w http.ResponseWriter, r *http.Request) {
 					config.Save(s.cfgPath, s.cfg)
 					w.Header().Set("Content-Type", "application/json")
 					json.NewEncoder(w).Encode(map[string]any{"ok": true, "show_seq": newVal})
+					return
+				}
+			}
+		}
+	}
+	s.mu.Unlock()
+	http.Error(w, `{"error":"not found"}`, 404)
+}
+
+func (s *Server) handleToggleAutoStart(w http.ResponseWriter, r *http.Request) {
+	streamerName := r.URL.Query().Get("streamer")
+	outputName := r.URL.Query().Get("output")
+
+	s.mu.Lock()
+	for i := range s.cfg.Streamers {
+		if s.cfg.Streamers[i].Name == streamerName {
+			for j := range s.cfg.Streamers[i].Outputs {
+				if s.cfg.Streamers[i].Outputs[j].Name == outputName {
+					s.cfg.Streamers[i].Outputs[j].AutoStart = !s.cfg.Streamers[i].Outputs[j].AutoStart
+					newVal := s.cfg.Streamers[i].Outputs[j].AutoStart
+					// Update runtime pause state if not live
+					rt := s.streamers[streamerName]
+					if rt != nil && !rt.live {
+						rt.paused[outputName] = !newVal
+					}
+					// Update controller state if active
+					if rt != nil && rt.ctrl != nil {
+						if st, ok := rt.ctrl.GetOutputState(outputName); ok {
+							st.AutoStart = newVal
+						}
+					}
+					s.mu.Unlock()
+					config.Save(s.cfgPath, s.cfg)
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(map[string]any{"ok": true, "auto_start": newVal})
 					return
 				}
 			}
