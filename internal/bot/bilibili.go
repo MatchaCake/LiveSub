@@ -38,7 +38,7 @@ func NewBilibiliBot(name string, roomID int64, sessdata, biliJCT string, uid int
 	b.sender = dm.NewSender(
 		dm.WithSenderCookie(sessdata, biliJCT),
 		dm.WithMaxLength(danmakuMax),
-		dm.WithCooldown(5*time.Second),
+		dm.WithCooldown(2*time.Second),
 	)
 	return b
 }
@@ -87,6 +87,6 @@ func (b *BilibiliBot) UpdateCredentials(sessdata, biliJCT string, uid int64, dan
 	b.sender = dm.NewSender(
 		dm.WithSenderCookie(sessdata, biliJCT),
 		dm.WithMaxLength(b.danmakuMax),
-		dm.WithCooldown(5*time.Second),
+		dm.WithCooldown(2*time.Second),
 	)
 }
