@@ -951,13 +951,12 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 			http.Error(w, `{"error":"save failed"}`, 500)
 			return
 		}
-		// New or modified outputs default to paused
+		// Sync full output list to controller
 		{
 			rt := s.getOrCreateRuntime(streamerName)
 			rt.paused[req.Name] = true
 			if rt.ctrl != nil {
-				rt.ctrl.UpdateOutput(req)
-				rt.ctrl.SetPaused(req.Name, true)
+				rt.ctrl.SyncOutputs(sc.Outputs)
 			}
 		}
 		action := "add_output"
@@ -986,6 +985,10 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 		}
 		s.audit(r, "delete_output", fmt.Sprintf("%s / %s", streamerName, outputName))
 		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		// Sync to controller
+		if rt := s.streamers[streamerName]; rt != nil && rt.ctrl != nil {
+			rt.ctrl.SyncOutputs(sc.Outputs)
+		}
 
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, 405)
@@ -1119,13 +1122,12 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 			http.Error(w, `{"error":"save failed"}`, 500)
 			return
 		}
-		// New or modified outputs default to paused
+		// Sync full output list to controller
 		{
 			rt := s.getOrCreateRuntime(streamerName)
 			rt.paused[req.Name] = true
 			if rt.ctrl != nil {
-				rt.ctrl.UpdateOutput(req)
-				rt.ctrl.SetPaused(req.Name, true)
+				rt.ctrl.SyncOutputs(sc.Outputs)
 			}
 		}
 		action := "add_output"
@@ -1154,6 +1156,9 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 		}
 		s.audit(r, "delete_output", fmt.Sprintf("%s / %s", streamerName, outputName))
 		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		if rt := s.streamers[streamerName]; rt != nil && rt.ctrl != nil {
+			rt.ctrl.SyncOutputs(sc.Outputs)
+		}
 
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, 405)
