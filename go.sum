@@ -14,6 +14,8 @@ github.com/MatchaCake/bilibili_dm_lib v0.0.0-20260218065746-5fd262c0eb17 h1:Qx99
 github.com/MatchaCake/bilibili_dm_lib v0.0.0-20260218065746-5fd262c0eb17/go.mod h1:JSPVl9Qq8PMjTmuTjcpatoaU9HooOpAPKJHD8B+5T4s=
 github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260218071828-2870d58ad21c h1:fo8tHg5rQiaJFyv5IByQCRpREWuB//WQHajHsV5Fqi8=
 github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260218071828-2870d58ad21c/go.mod h1:M7MuQpeXbRJ50F4HqIpMDnBgVaRSjrnN8zPgscx25Zk=
+github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260219060336-c3a154b0491b h1:JVxjDpVtOADMa4ay57HJbLuS6QwYK7G7grtJhpbgo70=
+github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260219060336-c3a154b0491b/go.mod h1:M7MuQpeXbRJ50F4HqIpMDnBgVaRSjrnN8zPgscx25Zk=
 github.com/andybalholm/brotli v1.2.0 h1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=
 github.com/andybalholm/brotli v1.2.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443 h1:aQ3y1lwWyqYPiWZThqv1aFbZMiM9vblcSArJRf2Irls=
