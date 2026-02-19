@@ -154,6 +154,9 @@ func run(cfgPath string) error {
 	// Register callbacks
 	webServer.OnAccountChange(syncDBBots)
 
+	// Monitor live status for all streamers (created early for hot reload access)
+	mon := stream.NewMonitor(stream.WithMonitorInterval(30 * time.Second))
+
 	// Hot reload
 	hotCfg.OnReload(func(newCfg *config.Config) {
 		if newCfg.Web.Auth.Username != "" && newCfg.Web.Auth.Password != "" {
@@ -162,11 +165,18 @@ func run(cfgPath string) error {
 			}
 		}
 		syncDBBots()
+		// Update server config pointer
+		webServer.UpdateConfig(newCfg)
+		// Update config reference
+		cfg = newCfg
+		// Add new rooms to monitor
+		for _, rid := range newCfg.RoomIDs() {
+			mon.AddRoom(rid)
+		}
+		slog.Info("hot reload: server config + monitor rooms updated")
 	})
 	hotCfg.Watch()
 
-	// Monitor live status for all streamers
-	mon := stream.NewMonitor(stream.WithMonitorInterval(30 * time.Second))
 	roomIDs := cfg.RoomIDs()
 	monEvents, err := mon.Watch(ctx, roomIDs)
 	if err != nil {

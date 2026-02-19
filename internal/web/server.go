@@ -92,6 +92,23 @@ func (s *Server) OnAccountChange(fn func()) {
 	s.onAccountChange = fn
 }
 
+// UpdateConfig replaces the server's config pointer (called on hot reload).
+func (s *Server) UpdateConfig(cfg *config.Config) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cfg = cfg
+	// Init runtime for any new streamers
+	for _, sc := range cfg.Streamers {
+		if _, ok := s.streamers[sc.Name]; !ok {
+			p := make(map[string]bool)
+			for _, o := range sc.Outputs {
+				p[o.Name] = true // new outputs default paused
+			}
+			s.streamers[sc.Name] = &streamerRuntime{paused: p}
+		}
+	}
+}
+
 // OnStreamerChange registers a callback when streamer config changes.
 func (s *Server) OnStreamerChange(fn func()) {
 	s.onStreamerChange = fn
