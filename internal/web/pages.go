@@ -276,11 +276,18 @@ function renderStatus(data) {
         }
 
         var btn = document.createElement('button');
-        btn.className = 'btn ' + (o.paused ? 'btn-resume' : 'btn-pause');
-        btn.textContent = o.paused ? t('resume_btn') : t('pause_btn');
-        btn.setAttribute('data-streamer', s.name);
-        btn.setAttribute('data-output', o.name);
-        btn.onclick = function() { toggle(this.getAttribute('data-streamer'), this.getAttribute('data-output')); };
+        if (!s.live) {
+          btn.className = 'btn';
+          btn.textContent = t('offline_label') || '离线';
+          btn.disabled = true;
+          btn.style.opacity = '0.5';
+        } else {
+          btn.className = 'btn ' + (o.paused ? 'btn-resume' : 'btn-pause');
+          btn.textContent = o.paused ? t('resume_btn') : t('pause_btn');
+          btn.setAttribute('data-streamer', s.name);
+          btn.setAttribute('data-output', o.name);
+          btn.onclick = function() { toggle(this.getAttribute('data-streamer'), this.getAttribute('data-output')); };
+        }
         oc.appendChild(btn);
 
         // Sequence number toggle
