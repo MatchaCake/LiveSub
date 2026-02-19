@@ -23,7 +23,6 @@
 
 Open your browser and go to the address your administrator gave you (usually `http://server-ip:8899`). You'll see the login page.
 
-[Screenshot: Login page — dark background, username and password fields centered, language switcher in top-right corner]
 
 1. You can switch the interface language in the top-right corner (**中文** / **EN** / **日本語**)
 2. Enter your **username** and **password**
@@ -44,7 +43,6 @@ After logging in, you'll land on the **Control Panel**. What you see depends on 
 
 The Control Panel is where you'll spend most of your time. It shows the live translation status for every room.
 
-[Screenshot: Control Panel — title bar at top, multiple streamer cards below]
 
 #### Page Layout
 
@@ -67,7 +65,6 @@ Each card contains:
 
 Each output card shows the status of a single translation channel:
 
-[Screenshot: Output card — name, platform info, translation status badge, pending/sent messages, pause button]
 
 | Element | Description |
 |---------|-------------|
@@ -94,7 +91,6 @@ You can pause or resume any translation output at any time.
 3. The status badge turns orange: "⏸ Paused"
 4. The button changes to **▶️ Resume**
 
-[Screenshot: Paused output card — orange "Paused" badge, green "Resume" button]
 
 #### Important Notes
 
@@ -112,7 +108,6 @@ To give you a chance to review translations before they're sent as danmaku, each
 
 When messages are queued, the output card shows a red **⏳ Pending** section:
 
-[Screenshot: Pending queue — red header, each message showing countdown seconds and a Skip button]
 
 - Each message shows its remaining wait time, e.g. `2s | The weather is nice today`
 - There's a **Skip** button on the right side
@@ -165,7 +160,6 @@ Every live session automatically generates a transcript file (CSV format) record
 2. Click the **Refresh** button to load the file list
 3. Find the file you need, then click **⬇ Download**
 
-[Screenshot: Transcripts section — table with filename, size, time, and download button]
 
 #### File Format
 
@@ -202,7 +196,6 @@ Click the **⚙️ Admin** button in the top-right corner of the Control Panel.
 
 #### Managing Outputs
 
-[Screenshot: Output Management — streamer dropdown at top, output list table, add/edit form below]
 
 1. **Select a streamer** from the dropdown
 2. **View existing outputs**: The table shows each output's name, platform, target language, account, room ID, prefix, and suffix
@@ -231,7 +224,6 @@ Click the **⚙️ Admin** button in the top-right corner of the Control Panel.
 
 Click **⚙️ Admin** in the top-right corner of the Control Panel.
 
-[Screenshot: Admin Panel overview — sections for Streamer Management, Output Management, Users, Bilibili Accounts, Audit Log]
 
 #### 📺 Streamer Management
 
@@ -271,7 +263,6 @@ Manage the Bilibili accounts used for sending danmaku.
 4. Confirm the login on your phone
 5. Once confirmed, the account is automatically added
 
-[Screenshot: QR Login — QR code image centered, with "Scanned, please confirm on phone" status text]
 
 **Managing Existing Accounts:**
 
