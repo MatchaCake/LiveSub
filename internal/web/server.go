@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/websocket"
+
 	"github.com/christian-lee/livesub/internal/auth"
 	"github.com/christian-lee/livesub/internal/bot"
 	"github.com/christian-lee/livesub/internal/config"
@@ -62,6 +64,10 @@ type Server struct {
 
 	mu        sync.RWMutex
 	streamers map[string]*streamerRuntime // streamer name → runtime state
+
+	// WebSocket clients for live status push
+	wsMu    sync.Mutex
+	wsConns map[*websocket.Conn]bool
 }
 
 func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string, cfg *config.Config, cfgPath string) *Server {
@@ -73,6 +79,7 @@ func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string
 		cfgPath:       cfgPath,
 		transcriptDir: transcriptDir,
 		streamers:     make(map[string]*streamerRuntime),
+		wsConns:       make(map[*websocket.Conn]bool),
 	}
 	// Init runtime state for each configured streamer — all outputs paused by default
 	for _, sc := range cfg.Streamers {
@@ -155,6 +162,7 @@ func (s *Server) Start() {
 	// Authenticated
 	mux.HandleFunc("/", s.requireAuth(s.handleIndex))
 	mux.HandleFunc("/api/status", s.requireAuth(s.handleStatus))
+	mux.HandleFunc("/ws/status", s.handleWS)
 	mux.HandleFunc("/api/toggle", s.requireAuth(s.handleToggle))
 	mux.HandleFunc("/api/toggle-seq", s.requireAuth(s.handleToggleSeq))
 	mux.HandleFunc("/api/skip", s.requireAuth(s.handleSkip))
@@ -458,6 +466,88 @@ func (s *Server) handleToggleSeq(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	http.Error(w, `{"error":"not found"}`, 404)
+}
+
+var wsUpgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		slog.Warn("ws upgrade failed", "err", err)
+		return
+	}
+	s.wsMu.Lock()
+	s.wsConns[conn] = true
+	s.wsMu.Unlock()
+
+	// Keep connection alive, remove on close
+	defer func() {
+		s.wsMu.Lock()
+		delete(s.wsConns, conn)
+		s.wsMu.Unlock()
+		conn.Close()
+	}()
+
+	for {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			break
+		}
+	}
+}
+
+// BroadcastStatus sends current status to all WS clients.
+func (s *Server) BroadcastStatus() {
+	s.wsMu.Lock()
+	conns := make([]*websocket.Conn, 0, len(s.wsConns))
+	for c := range s.wsConns {
+		conns = append(conns, c)
+	}
+	s.wsMu.Unlock()
+
+	if len(conns) == 0 {
+		return
+	}
+
+	// Build status (simplified — no user filtering for WS)
+	s.mu.RLock()
+	var streamers []StreamerState
+	for _, sc := range s.cfg.Streamers {
+		state := StreamerState{RoomID: sc.RoomID, Name: sc.Name}
+		rt := s.streamers[sc.Name]
+		if rt != nil {
+			state.Live = rt.live
+			if rt.ctrl != nil {
+				state.Outputs = rt.ctrl.OutputStates()
+			}
+		}
+		if state.Outputs == nil {
+			state.Outputs = make([]controller.OutputState, len(sc.Outputs))
+			for i, o := range sc.Outputs {
+				paused := false
+				if rt != nil {
+					paused = rt.paused[o.Name]
+				}
+				state.Outputs[i] = controller.OutputState{
+					Name: o.Name, Platform: o.Platform, TargetLang: o.TargetLang,
+					BotName: o.Account, Paused: paused, ShowSeq: o.ShowSeq,
+				}
+			}
+		}
+		streamers = append(streamers, state)
+	}
+	s.mu.RUnlock()
+
+	data, _ := json.Marshal(StatusResponse{Streamers: streamers})
+	for _, c := range conns {
+		if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
+			s.wsMu.Lock()
+			delete(s.wsConns, c)
+			s.wsMu.Unlock()
+			c.Close()
+		}
+	}
 }
 
 func (s *Server) handleSkip(w http.ResponseWriter, r *http.Request) {

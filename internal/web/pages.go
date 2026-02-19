@@ -137,7 +137,18 @@ async function init() {
   currentUser = await res.json();
   document.getElementById('userInfo').textContent = currentUser.username;
   fetchStatus();
-  setInterval(fetchStatus, 2000);
+  // WebSocket for real-time status updates
+  var wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var ws = new WebSocket(wsProto + '//' + location.host + '/ws/status');
+  ws.onmessage = function(e) {
+    try { var data = JSON.parse(e.data); renderStatus(data); } catch(err) {}
+  };
+  ws.onclose = function() {
+    // Fallback to polling if WS disconnects
+    setTimeout(function() { setInterval(fetchStatus, 2000); }, 1000);
+  };
+  // Also poll as fallback (slower)
+  setInterval(fetchStatus, 5000);
 }
 
 async function fetchStatus() {
