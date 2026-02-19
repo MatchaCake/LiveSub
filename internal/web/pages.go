@@ -292,7 +292,7 @@ function renderStatus(data) {
 
         // Sequence number toggle
         var seqLabel = document.createElement('label');
-        seqLabel.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#aaa;margin-top:6px;cursor:pointer';
+        seqLabel.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#aaa;cursor:pointer';
         var seqCb = document.createElement('input');
         seqCb.type = 'checkbox';
         seqCb.checked = o.show_seq || false;
