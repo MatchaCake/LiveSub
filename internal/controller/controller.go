@@ -38,6 +38,7 @@ type OutputState struct {
 	RoomID     int64        `json:"room_id"`
 	Paused     bool         `json:"paused"`
 	ShowSeq    bool         `json:"show_seq"`
+	AutoStart  bool         `json:"auto_start"`
 	LastText   string       `json:"last_text"`
 	Pending    []PendingMsg `json:"pending"` // messages waiting to send
 	Recent     []string     `json:"recent"`  // last N sent messages
@@ -101,6 +102,7 @@ func New(pool *bot.Pool, outputs []config.OutputConfig, tlog *transcript.Logger,
 			BotNames:   accts,
 			RoomID:     o.RoomID,
 			ShowSeq:    o.ShowSeq,
+			AutoStart:  o.AutoStart,
 		}
 		paused[o.Name] = false
 	}
@@ -219,6 +221,14 @@ func (c *Controller) SyncOutputs(outputs []config.OutputConfig) {
 }
 
 // SetShowSeq updates the show_seq flag for an output.
+// GetOutputState returns the output state for mutation. Caller must hold no locks.
+func (c *Controller) GetOutputState(name string) (*OutputState, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	s, ok := c.outputStates[name]
+	return s, ok
+}
+
 func (c *Controller) SetShowSeq(outputName string, showSeq bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
