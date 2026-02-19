@@ -386,6 +386,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 					Platform:   o.Platform,
 					TargetLang: o.TargetLang,
 					BotName:    o.Account,
+					BotNames:   o.AccountPool(),
 					Paused:     paused,
 					ShowSeq:    o.ShowSeq,
 				}
@@ -548,7 +549,7 @@ func (s *Server) doBroadcast() {
 				}
 				state.Outputs[i] = controller.OutputState{
 					Name: o.Name, Platform: o.Platform, TargetLang: o.TargetLang,
-					BotName: o.Account, Paused: paused, ShowSeq: o.ShowSeq,
+					BotName: o.Account, BotNames: o.AccountPool(), Paused: paused, ShowSeq: o.ShowSeq,
 				}
 			}
 		}

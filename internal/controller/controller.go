@@ -34,6 +34,7 @@ type OutputState struct {
 	Platform   string       `json:"platform"`
 	TargetLang string       `json:"target_lang"`
 	BotName    string       `json:"bot_name"`
+	BotNames   []string     `json:"bot_names"`  // account pool names
 	RoomID     int64        `json:"room_id"`
 	Paused     bool         `json:"paused"`
 	ShowSeq    bool         `json:"show_seq"`
@@ -59,6 +60,7 @@ type Controller struct {
 
 	sendDelay  time.Duration // delay before sending (default 3s)
 	onChange   func()        // called when pending/recent changes
+	rrIndex    map[string]int // output name → round-robin index for account pool
 	ch         chan Translation
 	done       chan struct{}
 	wg         sync.WaitGroup
@@ -86,11 +88,17 @@ func New(pool *bot.Pool, outputs []config.OutputConfig, tlog *transcript.Logger,
 	states := make(map[string]*OutputState)
 	paused := make(map[string]bool)
 	for _, o := range outputs {
+		accts := o.AccountPool()
+		botName := o.Account
+		if len(accts) > 0 {
+			botName = accts[0]
+		}
 		states[o.Name] = &OutputState{
 			Name:       o.Name,
 			Platform:   o.Platform,
 			TargetLang: o.TargetLang,
-			BotName:    o.Account,
+			BotName:    botName,
+			BotNames:   accts,
 			RoomID:     o.RoomID,
 			ShowSeq:    o.ShowSeq,
 		}
@@ -105,6 +113,7 @@ func New(pool *bot.Pool, outputs []config.OutputConfig, tlog *transcript.Logger,
 		paused:         paused,
 		outputStates:   states,
 		skipSet:        make(map[int64]bool),
+		rrIndex:        make(map[string]int),
 		sendDelay:      3 * time.Second,
 		ch:             make(chan Translation, 100),
 		done:           make(chan struct{}),
@@ -160,9 +169,11 @@ func (c *Controller) UpdateOutput(cfg config.OutputConfig) {
 		}
 	}
 	if s, ok := c.outputStates[cfg.Name]; ok {
+		accts := cfg.AccountPool()
 		s.Platform = cfg.Platform
 		s.TargetLang = cfg.TargetLang
 		s.BotName = cfg.Account
+		s.BotNames = accts
 		s.RoomID = cfg.RoomID
 		s.ShowSeq = cfg.ShowSeq
 	}
@@ -178,11 +189,13 @@ func (c *Controller) SyncOutputs(outputs []config.OutputConfig) {
 	newStates := make(map[string]*OutputState)
 	newPaused := make(map[string]bool)
 	for _, o := range outputs {
+		accts := o.AccountPool()
 		if existing, ok := c.outputStates[o.Name]; ok {
 			// Update fields from config
 			existing.Platform = o.Platform
 			existing.TargetLang = o.TargetLang
 			existing.BotName = o.Account
+			existing.BotNames = accts
 			existing.RoomID = o.RoomID
 			existing.ShowSeq = o.ShowSeq
 			newStates[o.Name] = existing
@@ -194,6 +207,7 @@ func (c *Controller) SyncOutputs(outputs []config.OutputConfig) {
 				Platform:   o.Platform,
 				TargetLang: o.TargetLang,
 				BotName:    o.Account,
+				BotNames:   accts,
 				RoomID:     o.RoomID,
 				ShowSeq:    o.ShowSeq,
 			}
@@ -476,9 +490,10 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 		return
 	}
 
-	b := c.pool.Get(o.Account)
-	if b == nil {
-		slog.Warn("bot not found", "output", dm.output, "bot", o.Account)
+	// Pick bot via round-robin from account pool
+	accts := o.AccountPool()
+	if len(accts) == 0 {
+		slog.Warn("no accounts for output", "output", dm.output)
 		return
 	}
 
@@ -491,8 +506,30 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 	if o.ShowSeq {
 		prefix += seqEmojis[dm.seqNum%len(seqEmojis)]
 	}
-	chunks := splitWithWrap(dm.text, prefix, o.Suffix, b.MaxMessageLen())
+
+	// Use minimum maxLen across all pool bots so chunks fit any bot
+	minMax := 0
+	for _, name := range accts {
+		if pb := c.pool.Get(name); pb != nil {
+			if ml := pb.MaxMessageLen(); ml > 0 && (minMax <= 0 || ml < minMax) {
+				minMax = ml
+			}
+		}
+	}
+
+	chunks := splitWithWrap(dm.text, prefix, o.Suffix, minMax)
 	for _, chunk := range chunks {
+		// Round-robin: pick next bot for each chunk
+		c.mu.Lock()
+		idx := c.rrIndex[dm.output] % len(accts)
+		c.rrIndex[dm.output] = (idx + 1) % len(accts)
+		c.mu.Unlock()
+
+		b := c.pool.Get(accts[idx])
+		if b == nil {
+			slog.Warn("bot not found", "output", dm.output, "bot", accts[idx])
+			continue
+		}
 		slog.Info("sending", "output", dm.output, "bot", b.Name(), "room", targetRoom, "text", chunk)
 		if err := b.Send(ctx, targetRoom, chunk); err != nil {
 			slog.Error("send failed", "output", dm.output, "bot", b.Name(), "err", err)
