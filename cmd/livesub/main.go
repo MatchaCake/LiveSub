@@ -13,10 +13,12 @@ import (
 	"syscall"
 	"time"
 
+	dm "github.com/MatchaCake/bilibili_dm_lib"
 	stream "github.com/MatchaCake/bilibili_stream_lib"
 	"github.com/christian-lee/livesub/internal/agent"
 	"github.com/christian-lee/livesub/internal/auth"
 	"github.com/christian-lee/livesub/internal/bot"
+	"github.com/christian-lee/livesub/internal/command"
 	"github.com/christian-lee/livesub/internal/config"
 	"github.com/christian-lee/livesub/internal/controller"
 	"github.com/christian-lee/livesub/internal/transcript"
@@ -154,6 +156,45 @@ func run(cfgPath string) error {
 	// Register callbacks
 	webServer.OnAccountChange(syncDBBots)
 
+	// Start danmaku command handlers for streamers with command_uids
+	cmdHandlers := make(map[int64]*command.Handler) // roomID → handler
+	for _, sc := range cfg.Streamers {
+		if len(sc.CommandUIDs) == 0 || sc.RoomID == 0 {
+			continue
+		}
+		// Use 佯攻菲娜 for danmaku listening; fall back to any available bot
+		var dmClient *dm.Client
+		if bb, ok := pool.Get("佯攻菲娜").(*bot.BilibiliBot); ok && bb.Available() {
+			dmClient = dm.NewClient(
+				dm.WithCookie(bb.SESSDATA(), bb.BiliJCT()),
+				dm.WithRoomID(sc.RoomID),
+			)
+		} else {
+			for _, b := range pool.All() {
+				if bb, ok := b.(*bot.BilibiliBot); ok && bb.Available() {
+					dmClient = dm.NewClient(
+						dm.WithCookie(bb.SESSDATA(), bb.BiliJCT()),
+						dm.WithRoomID(sc.RoomID),
+					)
+					break
+				}
+			}
+		}
+		if dmClient == nil {
+			slog.Warn("no bot available for command handler", "room", sc.RoomID)
+			continue
+		}
+		h := command.New(sc.RoomID, sc.CommandUIDs, dmClient)
+		cmdHandlers[sc.RoomID] = h
+		go func(roomID int64, client *dm.Client, handler *command.Handler) {
+			// Start client (blocks until ctx cancel) and handler in parallel
+			go handler.Run(ctx)
+			if err := client.Start(ctx); err != nil && ctx.Err() == nil {
+				slog.Error("command dm client failed", "room", roomID, "err", err)
+			}
+		}(sc.RoomID, dmClient, h)
+	}
+
 	// Monitor live status for all streamers (created early for hot reload access)
 	mon := stream.NewMonitor(stream.WithMonitorInterval(30 * time.Second))
 
@@ -277,6 +318,11 @@ func run(cfgPath string) error {
 					}
 					mu.Unlock()
 
+					// Link command handler to this controller
+					if ch, ok := cmdHandlers[sc.RoomID]; ok {
+						ch.SetController(ctrl)
+					}
+
 					// Create and run agent
 					a := agent.New(sc, translator, ctrl)
 					if err := a.Run(streamCtx); err != nil {
@@ -285,6 +331,9 @@ func run(cfgPath string) error {
 
 					ctrl.Stop()
 					webServer.SetController(sc.Name, nil)
+					if ch, ok := cmdHandlers[sc.RoomID]; ok {
+						ch.SetController(nil)
+					}
 					streamCancel()
 
 					mu.Lock()
