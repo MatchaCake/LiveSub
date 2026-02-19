@@ -156,6 +156,7 @@ func (s *Server) Start() {
 	mux.HandleFunc("/", s.requireAuth(s.handleIndex))
 	mux.HandleFunc("/api/status", s.requireAuth(s.handleStatus))
 	mux.HandleFunc("/api/toggle", s.requireAuth(s.handleToggle))
+	mux.HandleFunc("/api/toggle-seq", s.requireAuth(s.handleToggleSeq))
 	mux.HandleFunc("/api/skip", s.requireAuth(s.handleSkip))
 	mux.HandleFunc("/api/me", s.requireAuth(s.handleMe))
 	mux.HandleFunc("/api/transcripts", s.requireAuth(s.handleTranscripts))
@@ -375,6 +376,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 					TargetLang: o.TargetLang,
 					BotName:    o.Account,
 					Paused:     paused,
+					ShowSeq:    o.ShowSeq,
 				}
 			}
 		}
@@ -427,6 +429,35 @@ func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
 	slog.Info("output toggled", "streamer", streamerName, "output", outputName, "paused", paused, "user", u.Username)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"streamer": streamerName, "output": outputName, "paused": paused})
+}
+
+func (s *Server) handleToggleSeq(w http.ResponseWriter, r *http.Request) {
+	streamerName := r.URL.Query().Get("streamer")
+	outputName := r.URL.Query().Get("output")
+
+	s.mu.Lock()
+	// Toggle show_seq in config
+	for i := range s.cfg.Streamers {
+		if s.cfg.Streamers[i].Name == streamerName {
+			for j := range s.cfg.Streamers[i].Outputs {
+				if s.cfg.Streamers[i].Outputs[j].Name == outputName {
+					s.cfg.Streamers[i].Outputs[j].ShowSeq = !s.cfg.Streamers[i].Outputs[j].ShowSeq
+					newVal := s.cfg.Streamers[i].Outputs[j].ShowSeq
+					rt := s.streamers[streamerName]
+					s.mu.Unlock()
+					if rt != nil && rt.ctrl != nil {
+						rt.ctrl.SetShowSeq(outputName, newVal)
+					}
+					config.Save(s.cfgPath, s.cfg)
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(map[string]any{"ok": true, "show_seq": newVal})
+					return
+				}
+			}
+		}
+	}
+	s.mu.Unlock()
+	http.Error(w, `{"error":"not found"}`, 404)
 }
 
 func (s *Server) handleSkip(w http.ResponseWriter, r *http.Request) {

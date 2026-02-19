@@ -36,6 +36,7 @@ type OutputState struct {
 	BotName    string       `json:"bot_name"`
 	RoomID     int64        `json:"room_id"`
 	Paused     bool         `json:"paused"`
+	ShowSeq    bool         `json:"show_seq"`
 	LastText   string       `json:"last_text"`
 	Pending    []PendingMsg `json:"pending"` // messages waiting to send
 	Recent     []string     `json:"recent"`  // last N sent messages
@@ -74,6 +75,7 @@ func New(pool *bot.Pool, outputs []config.OutputConfig, tlog *transcript.Logger,
 			TargetLang: o.TargetLang,
 			BotName:    o.Account,
 			RoomID:     o.RoomID,
+			ShowSeq:    o.ShowSeq,
 		}
 		paused[o.Name] = false
 	}
@@ -127,6 +129,21 @@ func (c *Controller) SetPaused(outputName string, paused bool) {
 	c.paused[outputName] = paused
 	if s, ok := c.outputStates[outputName]; ok {
 		s.Paused = paused
+	}
+}
+
+// SetShowSeq updates the show_seq flag for an output.
+func (c *Controller) SetShowSeq(outputName string, showSeq bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := range c.outputs {
+		if c.outputs[i].Name == outputName {
+			c.outputs[i].ShowSeq = showSeq
+			break
+		}
+	}
+	if s, ok := c.outputStates[outputName]; ok {
+		s.ShowSeq = showSeq
 	}
 }
 
@@ -386,8 +403,11 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 		targetRoom = c.streamerRoomID
 	}
 
-	seqEmoji := seqEmojis[dm.seqNum%len(seqEmojis)]
-	chunks := splitWithWrap(dm.text, o.Prefix+seqEmoji, o.Suffix, b.MaxMessageLen())
+	prefix := o.Prefix
+	if o.ShowSeq {
+		prefix += seqEmojis[dm.seqNum%len(seqEmojis)]
+	}
+	chunks := splitWithWrap(dm.text, prefix, o.Suffix, b.MaxMessageLen())
 	for _, chunk := range chunks {
 		slog.Info("sending", "output", dm.output, "bot", b.Name(), "room", targetRoom, "text", chunk)
 		if err := b.Send(ctx, targetRoom, chunk); err != nil {

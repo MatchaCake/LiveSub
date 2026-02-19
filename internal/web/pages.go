@@ -271,6 +271,17 @@ function renderStatus(data) {
         btn.onclick = function() { toggle(this.getAttribute('data-streamer'), this.getAttribute('data-output')); };
         oc.appendChild(btn);
 
+        // Sequence number toggle
+        var seqLabel = document.createElement('label');
+        seqLabel.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#aaa;margin-top:6px;cursor:pointer';
+        var seqCb = document.createElement('input');
+        seqCb.type = 'checkbox';
+        seqCb.checked = o.show_seq || false;
+        seqCb.onchange = (function(sn, on) { return function() { toggleSeq(sn, on); }; })(s.name, o.name);
+        seqLabel.appendChild(seqCb);
+        seqLabel.appendChild(document.createTextNode(t('show_seq')));
+        oc.appendChild(seqLabel);
+
         outputsDiv.appendChild(oc);
       });
     }
@@ -282,6 +293,10 @@ function renderStatus(data) {
 async function skipMsg(streamerName, msgId) {
   await fetch('/api/skip?streamer=' + encodeURIComponent(streamerName) + '&id=' + msgId);
   fetchStatus();
+}
+
+async function toggleSeq(streamerName, outputName) {
+  await fetch('/api/toggle-seq?streamer=' + encodeURIComponent(streamerName) + '&output=' + encodeURIComponent(outputName));
 }
 
 async function toggle(streamerName, outputName) {
