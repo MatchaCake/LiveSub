@@ -184,7 +184,7 @@ func run(cfgPath string) error {
 			slog.Warn("no bot available for command handler", "room", sc.RoomID)
 			continue
 		}
-		h := command.New(sc.RoomID, sc.CommandUIDs, dmClient)
+		h := command.New(sc.RoomID, sc.CommandUIDs, dmClient, command.WithPool(pool, "佯攻菲娜"))
 		cmdHandlers[sc.RoomID] = h
 		go func(roomID int64, client *dm.Client, handler *command.Handler) {
 			// Start client (blocks until ctx cancel) and handler in parallel

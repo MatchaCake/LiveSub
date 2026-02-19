@@ -83,6 +83,16 @@ func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string
 		wsConns:       make(map[*websocket.Conn]bool),
 		wsBroadch:     make(chan struct{}, 1),
 	}
+	// Load persisted sessions
+	s.store.CleanExpiredSessions()
+	if saved, err := s.store.LoadSessions(); err == nil {
+		for token, sess := range saved {
+			s.sessions.Store(token, &session{UserID: sess.UserID, Expiry: sess.Expiry})
+		}
+		if len(saved) > 0 {
+			slog.Info("restored sessions", "count", len(saved))
+		}
+	}
 	// Init runtime state for each configured streamer — all outputs paused by default
 	for _, sc := range cfg.Streamers {
 		p := make(map[string]bool)
@@ -218,6 +228,7 @@ func (s *Server) getSession(r *http.Request) *session {
 	sess := val.(*session)
 	if time.Now().After(sess.Expiry) {
 		s.sessions.Delete(cookie.Value)
+		s.store.DeleteSession(cookie.Value)
 		return nil
 	}
 	return sess
@@ -289,13 +300,15 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		slog.Error("generate session token", "err", err)
 		return
 	}
-	s.sessions.Store(token, &session{UserID: u.ID, Expiry: time.Now().Add(24 * time.Hour)})
+	expiry := time.Now().Add(7 * 24 * time.Hour)
+	s.sessions.Store(token, &session{UserID: u.ID, Expiry: expiry})
+	s.store.SaveSession(token, u.ID, expiry)
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "livesub_token",
 		Value:    token,
 		Path:     "/",
-		MaxAge:   86400,
+		MaxAge:   604800, // 7 days
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -314,6 +327,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("livesub_token")
 	if err == nil {
 		s.sessions.Delete(cookie.Value)
+		s.store.DeleteSession(cookie.Value)
 	}
 	http.SetCookie(w, &http.Cookie{Name: "livesub_token", Value: "", Path: "/", MaxAge: -1})
 	http.Redirect(w, r, "/login", http.StatusFound)
