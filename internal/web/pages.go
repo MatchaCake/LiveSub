@@ -225,7 +225,7 @@ function renderStatus(data) {
           o.pending.forEach(function(p) {
             var pRow = document.createElement('div');
             pRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin:4px 0;padding:4px 8px;background:#1a1a3e;border-radius:4px;font-size:13px';
-            var remaining = Math.max(0, Math.ceil((p.send_at - Date.now()) / 1000));
+            var remaining = p.remain_sec || 0;
             var pText = document.createElement('span');
             pText.style.cssText = 'flex:1;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
             pText.textContent = remaining + 's | ' + p.text;
