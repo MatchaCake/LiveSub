@@ -132,6 +132,25 @@ func (c *Controller) SetPaused(outputName string, paused bool) {
 	}
 }
 
+// UpdateOutput syncs an output's config to the running controller.
+func (c *Controller) UpdateOutput(cfg config.OutputConfig) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := range c.outputs {
+		if c.outputs[i].Name == cfg.Name {
+			c.outputs[i] = cfg
+			break
+		}
+	}
+	if s, ok := c.outputStates[cfg.Name]; ok {
+		s.Platform = cfg.Platform
+		s.TargetLang = cfg.TargetLang
+		s.BotName = cfg.Account
+		s.RoomID = cfg.RoomID
+		s.ShowSeq = cfg.ShowSeq
+	}
+}
+
 // SetShowSeq updates the show_seq flag for an output.
 func (c *Controller) SetShowSeq(outputName string, showSeq bool) {
 	c.mu.Lock()
