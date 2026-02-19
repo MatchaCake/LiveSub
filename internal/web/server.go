@@ -93,11 +93,11 @@ func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string
 			slog.Info("restored sessions", "count", len(saved))
 		}
 	}
-	// Init runtime state for each configured streamer — all outputs enabled by default
+	// Init runtime state for each configured streamer — all outputs paused by default
 	for _, sc := range cfg.Streamers {
 		p := make(map[string]bool)
 		for _, o := range sc.Outputs {
-			p[o.Name] = false // enabled: auto-start on go-live
+			p[o.Name] = true
 		}
 		s.streamers[sc.Name] = &streamerRuntime{
 			paused: p,
@@ -121,7 +121,7 @@ func (s *Server) UpdateConfig(cfg *config.Config) {
 		if _, ok := s.streamers[sc.Name]; !ok {
 			p := make(map[string]bool)
 			for _, o := range sc.Outputs {
-				p[o.Name] = false // new outputs default enabled
+				p[o.Name] = true // new outputs default paused
 			}
 			s.streamers[sc.Name] = &streamerRuntime{paused: p}
 		}
