@@ -45,6 +45,19 @@ func (p *Pool) All() []Bot {
 	return out
 }
 
+// AllAvailable returns all bots that are currently available.
+func (p *Pool) AllAvailable() []Bot {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	out := make([]Bot, 0, len(p.bots))
+	for _, b := range p.bots {
+		if b.Available() {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
 // Names returns all bot names.
 func (p *Pool) Names() []string {
 	p.mu.RLock()
