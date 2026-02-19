@@ -43,12 +43,14 @@ func NewBilibiliBot(name string, roomID int64, sessdata, biliJCT string, uid int
 	return b
 }
 
-func (b *BilibiliBot) Platform() string { return "bilibili" }
-func (b *BilibiliBot) Name() string     { return b.name }
-func (b *BilibiliBot) Available() bool   { return b.sessdata != "" }
-func (b *BilibiliBot) RoomID() int64    { return b.roomID }
+func (b *BilibiliBot) Platform() string   { return "bilibili" }
+func (b *BilibiliBot) Name() string       { return b.name }
+func (b *BilibiliBot) Available() bool     { return b.sessdata != "" }
+func (b *BilibiliBot) RoomID() int64      { return b.roomID }
 func (b *BilibiliBot) DanmakuMax() int    { return b.danmakuMax }
-func (b *BilibiliBot) MaxMessageLen() int { return b.danmakuMax }
+func (b *BilibiliBot) MaxMessageLen() int  { return b.danmakuMax }
+func (b *BilibiliBot) SESSDATA() string   { return b.sessdata }
+func (b *BilibiliBot) BiliJCT() string    { return b.biliJCT }
 
 // SetRoomID updates the target room for this bot.
 func (b *BilibiliBot) SetRoomID(roomID int64) {

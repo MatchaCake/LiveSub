@@ -18,11 +18,12 @@ type Config struct {
 }
 
 type StreamerConfig struct {
-	Name       string         `yaml:"name" json:"name"`
-	RoomID     int64          `yaml:"room_id" json:"room_id"`
-	SourceLang string         `yaml:"source_lang" json:"source_lang"`
-	AltLangs   []string       `yaml:"alt_langs" json:"alt_langs"`
-	Outputs    []OutputConfig `yaml:"outputs" json:"outputs"`
+	Name        string         `yaml:"name" json:"name"`
+	RoomID      int64          `yaml:"room_id" json:"room_id"`
+	SourceLang  string         `yaml:"source_lang" json:"source_lang"`
+	AltLangs    []string       `yaml:"alt_langs" json:"alt_langs"`
+	Outputs     []OutputConfig `yaml:"outputs" json:"outputs"`
+	CommandUIDs []int64        `yaml:"command_uids" json:"command_uids"` // UIDs allowed to send commands via danmaku
 }
 
 type STTConfig struct {

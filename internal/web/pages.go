@@ -452,6 +452,9 @@ const adminHTML = `<!DOCTYPE html>
       </select>
       <button class="add-btn" onclick="saveStreamer()">保存</button>
     </div>
+    <div class="form-row" style="margin-top:8px;">
+      <input type="text" id="sCmdUIDs" placeholder="弹幕指令白名单 (UID逗号分隔)" style="flex:1;">
+    </div>
   </div>
 </div>
 
@@ -709,7 +712,9 @@ function renderStreamersTable() {
     actions.appendChild(makeBtn(t('edit'), 'small-btn', function() { editStreamer(s.name); }));
     actions.appendChild(document.createTextNode(' '));
     actions.appendChild(makeBtn(t('delete'), 'small-btn danger', function() { deleteStreamer(s.name); }));
-    return [s.name, String(s.room_id), s.source_lang||'ja-JP', outFrag, actions];
+    var cmdCount = (s.command_uids || []).length;
+    var cmdEl = document.createTextNode(cmdCount > 0 ? cmdCount + ' UIDs' : '-');
+    return [s.name, String(s.room_id), s.source_lang||'ja-JP', outFrag, cmdEl, actions];
   });
   if (rows.length === 0) {
     var p = document.createElement('p');
@@ -718,7 +723,7 @@ function renderStreamersTable() {
     container.appendChild(p);
     return;
   }
-  container.appendChild(buildTable([t('name'), t('room_id'), t('source_lang'), t('outputs'), t('actions')], rows));
+  container.appendChild(buildTable([t('name'), t('room_id'), t('source_lang'), t('outputs'), t('cmd_whitelist'), t('actions')], rows));
 }
 
 function renderStreamerSelect() {
@@ -741,16 +746,19 @@ async function saveStreamer() {
   var msgEl = document.getElementById('streamerMsg');
   if (!name) { msgEl.className = 'msg err'; msgEl.textContent = t('name_required'); return; }
   if (!roomID) { msgEl.className = 'msg err'; msgEl.textContent = t('room_required'); return; }
+  var cmdUIDsStr = document.getElementById('sCmdUIDs').value.trim();
+  var cmdUIDs = cmdUIDsStr ? cmdUIDsStr.split(/[,，\s]+/).map(Number).filter(function(n) { return n > 0; }) : [];
   var existing = allStreamers.find(function(s) { return s.name === name; });
   var outputs = existing ? existing.outputs : [];
   var res = await fetch('/api/admin/streamers', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name: name, room_id: roomID, source_lang: lang, outputs: outputs})
+    body: JSON.stringify({name: name, room_id: roomID, source_lang: lang, outputs: outputs, command_uids: cmdUIDs})
   });
   if (res.ok) {
     msgEl.className = 'msg ok'; msgEl.textContent = t('streamer_saved') + ': ' + name;
     document.getElementById('sName').value = '';
     document.getElementById('sRoom').value = '';
+    document.getElementById('sCmdUIDs').value = '';
     loadStreamers();
   } else {
     var data = await res.json();
@@ -764,6 +772,7 @@ function editStreamer(name) {
   document.getElementById('sName').value = s.name;
   document.getElementById('sRoom').value = s.room_id;
   document.getElementById('sLang').value = s.source_lang || 'ja-JP';
+  document.getElementById('sCmdUIDs').value = (s.command_uids || []).join(', ');
   document.getElementById('sName').scrollIntoView({behavior: 'smooth'});
 }
 
