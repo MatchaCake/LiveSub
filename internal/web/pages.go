@@ -275,21 +275,6 @@ function renderStatus(data) {
           oc.appendChild(ot);
         }
 
-        // Auto-start checkbox
-        var asLabel = document.createElement('label');
-        asLabel.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#aaa;margin-bottom:4px;cursor:pointer;';
-        var asCb = document.createElement('input');
-        asCb.type = 'checkbox';
-        asCb.checked = o.auto_start;
-        asCb.setAttribute('data-streamer', s.name);
-        asCb.setAttribute('data-output', o.name);
-        asCb.onchange = function() {
-          fetch('/api/toggle-autostart?streamer='+encodeURIComponent(this.getAttribute('data-streamer'))+'&output='+encodeURIComponent(this.getAttribute('data-output')), {method:'POST'});
-        };
-        asLabel.appendChild(asCb);
-        asLabel.appendChild(document.createTextNode(t('auto_start_label') || '上播自动翻译'));
-        oc.appendChild(asLabel);
-
         var btn = document.createElement('button');
         if (!s.live) {
           btn.className = 'btn';
@@ -314,7 +299,25 @@ function renderStatus(data) {
         seqCb.onchange = (function(sn, on) { return function() { toggleSeq(sn, on); }; })(s.name, o.name);
         seqLabel.appendChild(seqCb);
         seqLabel.appendChild(document.createTextNode(t('show_seq')));
-        oc.appendChild(seqLabel);
+
+        var asLabel = document.createElement('label');
+        asLabel.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#aaa;cursor:pointer;margin-left:12px;';
+        var asCb = document.createElement('input');
+        asCb.type = 'checkbox';
+        asCb.checked = o.auto_start;
+        asCb.setAttribute('data-streamer', s.name);
+        asCb.setAttribute('data-output', o.name);
+        asCb.onchange = function() {
+          fetch('/api/toggle-autostart?streamer='+encodeURIComponent(this.getAttribute('data-streamer'))+'&output='+encodeURIComponent(this.getAttribute('data-output')), {method:'POST'});
+        };
+        asLabel.appendChild(asCb);
+        asLabel.appendChild(document.createTextNode(t('auto_start_label') || '上播自动翻译'));
+
+        var cbRow = document.createElement('div');
+        cbRow.style.cssText = 'display:flex;align-items:center;margin-top:6px;';
+        cbRow.appendChild(seqLabel);
+        cbRow.appendChild(asLabel);
+        oc.appendChild(cbRow);
 
         outputsDiv.appendChild(oc);
       });
