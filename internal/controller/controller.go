@@ -57,10 +57,27 @@ type Controller struct {
 	skipSet      map[int64]bool // pending msg IDs to skip
 	nextMsgID    int64
 
-	sendDelay time.Duration // delay before sending (default 3s)
-	ch        chan Translation
-	done      chan struct{}
-	wg        sync.WaitGroup
+	sendDelay  time.Duration // delay before sending (default 3s)
+	onChange   func()        // called when pending/recent changes
+	ch         chan Translation
+	done       chan struct{}
+	wg         sync.WaitGroup
+}
+
+// OnChange registers a callback fired when output state changes (pending/sent).
+func (c *Controller) OnChange(fn func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onChange = fn
+}
+
+func (c *Controller) notifyChange() {
+	c.mu.RLock()
+	fn := c.onChange
+	c.mu.RUnlock()
+	if fn != nil {
+		go fn()
+	}
 }
 
 // New creates a Controller with the given bot pool and output configuration.
@@ -373,6 +390,7 @@ func (c *Controller) run(ctx context.Context) {
 						seqNum: s.seqCounter,
 					})
 					s.seqCounter++
+					c.notifyChange()
 				}
 			}
 
@@ -416,14 +434,17 @@ func (c *Controller) processDelayQueue(ctx context.Context, queue []delayedMsg) 
 
 		if skipped {
 			slog.Info("skipped by user", "output", dm.output, "text", dm.text)
+			c.notifyChange()
 			continue
 		}
 		if isPaused {
 			slog.Info("paused at send time, dropping", "output", dm.output, "text", dm.text)
+			c.notifyChange()
 			continue
 		}
 
 		c.sendMessage(ctx, dm)
+		c.notifyChange()
 	}
 	return remaining
 }

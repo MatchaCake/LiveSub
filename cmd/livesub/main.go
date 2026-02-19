@@ -268,6 +268,7 @@ func run(cfgPath string) error {
 					// Create controller for this streamer
 					ctrl := controller.New(pool, sc.Outputs, tlog, sc.RoomID)
 					webServer.SetController(sc.Name, ctrl) // sync pause state BEFORE start
+					ctrl.OnChange(func() { webServer.BroadcastStatus() })
 					ctrl.Start(streamCtx)
 
 					mu.Lock()

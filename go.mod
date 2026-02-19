@@ -7,6 +7,7 @@ require (
 	github.com/MatchaCake/bilibili_dm_lib v0.0.0-20260218065746-5fd262c0eb17
 	github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260218071828-2870d58ad21c
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/mattn/go-sqlite3 v1.14.34
 	golang.org/x/crypto v0.48.0
 	google.golang.org/genai v1.46.0
@@ -27,7 +28,6 @@ require (
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.7 // indirect
 	github.com/googleapis/gax-go/v2 v2.15.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.61.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0 // indirect
