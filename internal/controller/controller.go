@@ -151,6 +151,42 @@ func (c *Controller) UpdateOutput(cfg config.OutputConfig) {
 	}
 }
 
+// SyncOutputs replaces the full output list, preserving pause state for existing outputs.
+func (c *Controller) SyncOutputs(outputs []config.OutputConfig) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.outputs = outputs
+
+	// Build new states, preserve existing pause/pending/recent
+	newStates := make(map[string]*OutputState)
+	newPaused := make(map[string]bool)
+	for _, o := range outputs {
+		if existing, ok := c.outputStates[o.Name]; ok {
+			// Update fields from config
+			existing.Platform = o.Platform
+			existing.TargetLang = o.TargetLang
+			existing.BotName = o.Account
+			existing.RoomID = o.RoomID
+			existing.ShowSeq = o.ShowSeq
+			newStates[o.Name] = existing
+			newPaused[o.Name] = c.paused[o.Name]
+		} else {
+			// New output — default paused
+			newStates[o.Name] = &OutputState{
+				Name:       o.Name,
+				Platform:   o.Platform,
+				TargetLang: o.TargetLang,
+				BotName:    o.Account,
+				RoomID:     o.RoomID,
+				ShowSeq:    o.ShowSeq,
+			}
+			newPaused[o.Name] = true
+		}
+	}
+	c.outputStates = newStates
+	c.paused = newPaused
+}
+
 // SetShowSeq updates the show_seq flag for an output.
 func (c *Controller) SetShowSeq(outputName string, showSeq bool) {
 	c.mu.Lock()
