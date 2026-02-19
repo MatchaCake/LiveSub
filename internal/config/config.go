@@ -44,6 +44,7 @@ type OutputConfig struct {
 	RoomID     int64  `yaml:"room_id" json:"room_id"`
 	Prefix     string `yaml:"prefix" json:"prefix"`
 	Suffix     string `yaml:"suffix" json:"suffix"`
+	ShowSeq    bool   `yaml:"show_seq" json:"show_seq"`
 }
 
 type BotConfig struct {
