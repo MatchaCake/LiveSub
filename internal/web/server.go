@@ -66,8 +66,9 @@ type Server struct {
 	streamers map[string]*streamerRuntime // streamer name → runtime state
 
 	// WebSocket clients for live status push
-	wsMu    sync.Mutex
-	wsConns map[*websocket.Conn]bool
+	wsMu      sync.Mutex
+	wsConns   map[*websocket.Conn]bool
+	wsBroadch chan struct{} // coalesce rapid broadcasts
 }
 
 func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string, cfg *config.Config, cfgPath string) *Server {
@@ -80,6 +81,7 @@ func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string
 		transcriptDir: transcriptDir,
 		streamers:     make(map[string]*streamerRuntime),
 		wsConns:       make(map[*websocket.Conn]bool),
+		wsBroadch:     make(chan struct{}, 1),
 	}
 	// Init runtime state for each configured streamer — all outputs paused by default
 	for _, sc := range cfg.Streamers {
@@ -152,6 +154,7 @@ func (s *Server) getOrCreateRuntime(name string) *streamerRuntime {
 }
 
 func (s *Server) Start() {
+	go s.runWSBroadcast()
 	mux := http.NewServeMux()
 
 	// Public
@@ -497,8 +500,23 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// BroadcastStatus sends current status to all WS clients.
+// BroadcastStatus signals that status should be pushed to WS clients.
+// Non-blocking; rapid calls are coalesced.
 func (s *Server) BroadcastStatus() {
+	select {
+	case s.wsBroadch <- struct{}{}:
+	default: // already pending
+	}
+}
+
+// runWSBroadcast is the single goroutine that writes to all WS connections.
+func (s *Server) runWSBroadcast() {
+	for range s.wsBroadch {
+		s.doBroadcast()
+	}
+}
+
+func (s *Server) doBroadcast() {
 	s.wsMu.Lock()
 	conns := make([]*websocket.Conn, 0, len(s.wsConns))
 	for c := range s.wsConns {
@@ -510,7 +528,6 @@ func (s *Server) BroadcastStatus() {
 		return
 	}
 
-	// Build status (simplified — no user filtering for WS)
 	s.mu.RLock()
 	var streamers []StreamerState
 	for _, sc := range s.cfg.Streamers {
