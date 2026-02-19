@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	dm "github.com/MatchaCake/bilibili_dm_lib"
 	"github.com/christian-lee/livesub/internal/bot"
@@ -17,7 +18,6 @@ type Handler struct {
 	allowedUIDs map[int64]bool
 	client      *dm.Client
 	pool        *bot.Pool
-	replyBot    string // bot name for sending replies
 
 	mu   sync.RWMutex
 	ctrl *controller.Controller
@@ -44,10 +44,9 @@ func New(roomID int64, allowedUIDs []int64, client *dm.Client, opts ...HandlerOp
 type HandlerOption func(*Handler)
 
 // WithPool sets the bot pool for sending replies.
-func WithPool(p *bot.Pool, replyBot string) HandlerOption {
+func WithPool(p *bot.Pool) HandlerOption {
 	return func(h *Handler) {
 		h.pool = p
-		h.replyBot = replyBot
 	}
 }
 
@@ -148,7 +147,14 @@ func (h *Handler) handleDanmaku(d *dm.Danmaku) {
 
 func (h *Handler) sendHelp(ctrl *controller.Controller, d *dm.Danmaku) {
 	slog.Info("command: help", "uid", d.UID, "user", d.Sender, "room", h.roomID)
-	h.reply(context.Background(), "/off 暂停全部, /off 名称 暂停指定, /on 同理, /list 列表")
+	lines := []string{
+		"/off 暂停全部输出语言",
+		"/on 恢复全部输出语言",
+		"/off 名称 暂停指定输出语言",
+		"/on 名称 恢复指定输出语言",
+		"/list 查看输出语言列表",
+	}
+	h.replyLines(context.Background(), lines)
 }
 
 func (h *Handler) sendList(ctrl *controller.Controller, d *dm.Danmaku) {
@@ -170,15 +176,25 @@ func (h *Handler) sendList(ctrl *controller.Controller, d *dm.Danmaku) {
 }
 
 func (h *Handler) reply(ctx context.Context, msg string) {
-	if h.pool == nil || h.replyBot == "" {
+	h.replyLines(ctx, []string{msg})
+}
+
+func (h *Handler) replyLines(ctx context.Context, lines []string) {
+	if h.pool == nil {
 		return
 	}
-	b := h.pool.Get(h.replyBot)
-	if b == nil {
+	bots := h.pool.AllAvailable()
+	if len(bots) == 0 {
 		return
 	}
-	if err := b.Send(ctx, h.roomID, msg); err != nil {
-		slog.Warn("command reply failed", "err", err)
+	for i, line := range lines {
+		if i > 0 {
+			time.Sleep(500 * time.Millisecond)
+		}
+		b := bots[i%len(bots)]
+		if err := b.Send(ctx, h.roomID, line); err != nil {
+			slog.Warn("command reply failed", "line", line, "err", err)
+		}
 	}
 }
 
