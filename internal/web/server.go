@@ -147,11 +147,26 @@ func (s *Server) SetController(streamerName string, ctrl *controller.Controller)
 }
 
 // SetLive updates live status for a streamer.
+// When going live, auto_start outputs are unpaused for the new session.
 func (s *Server) SetLive(streamerName string, live bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rt := s.getOrCreateRuntime(streamerName)
 	rt.live = live
+
+	if live {
+		// Reset pause state for auto_start outputs (new stream session)
+		for _, sc := range s.cfg.Streamers {
+			if sc.Name == streamerName {
+				for _, o := range sc.Outputs {
+					if o.AutoStart {
+						rt.paused[o.Name] = false
+					}
+				}
+				break
+			}
+		}
+	}
 }
 
 func (s *Server) getOrCreateRuntime(name string) *streamerRuntime {
