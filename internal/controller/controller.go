@@ -22,10 +22,10 @@ type Translation struct {
 
 // PendingMsg is a message waiting to be sent (with delay for review).
 type PendingMsg struct {
-	ID   int64  `json:"id"`
-	Text string `json:"text"`
-	// SendAt is unix milliseconds when the message will be sent.
-	SendAt int64 `json:"send_at"`
+	ID        int64  `json:"id"`
+	Text      string `json:"text"`
+	SendAt    int64  `json:"send_at"`     // unix ms
+	RemainSec int    `json:"remain_sec"`  // computed at read time
 }
 
 // OutputState tracks per-output status for the web UI.
@@ -190,8 +190,16 @@ func (c *Controller) OutputStates() []OutputState {
 	for _, o := range c.outputs {
 		if s, ok := c.outputStates[o.Name]; ok {
 			cp := *s
+			now := time.Now().UnixMilli()
 			cp.Pending = make([]PendingMsg, len(s.Pending))
-			copy(cp.Pending, s.Pending)
+			for i, p := range s.Pending {
+				cp.Pending[i] = p
+				remain := int((p.SendAt - now + 999) / 1000) // ceil
+				if remain < 0 {
+					remain = 0
+				}
+				cp.Pending[i].RemainSec = remain
+			}
 			cp.Recent = make([]string, len(s.Recent))
 			copy(cp.Recent, s.Recent)
 			out = append(out, cp)
