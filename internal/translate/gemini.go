@@ -38,7 +38,8 @@ func (t *GeminiTranslator) Translate(ctx context.Context, text, sourceLang, targ
 	prompt := fmt.Sprintf(
 		"Translate the following %s text to %s. "+
 			"Output ONLY the translation, nothing else. "+
-			"Keep it natural and concise (suitable for live stream subtitles).\n\n%s",
+			"Keep it natural and concise (suitable for live stream subtitles). "+
+			"For proper nouns and person names, output their romaji/romanization instead of translating them.\n\n%s",
 		sourceLang, targetLang, text,
 	)
 
