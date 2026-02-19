@@ -89,8 +89,57 @@ func (t *GeminiTranslator) Translate(ctx context.Context, text, sourceLang, targ
 	result := resp.Text()
 	result = strings.TrimSpace(result)
 
+	// Detect untranslated output: if result looks like source language, retry with fallback
+	if model != t.fallbackModel && looksLikeSource(result, sourceLang, targetLang) {
+		slog.Warn("translation returned source language, retrying with fallback",
+			"model", model, "source", text, "result", result)
+		resp2, err2 := t.client.Models.GenerateContent(ctx, t.fallbackModel, genai.Text(prompt), nil)
+		if err2 == nil {
+			fallbackResult := strings.TrimSpace(resp2.Text())
+			if !looksLikeSource(fallbackResult, sourceLang, targetLang) {
+				return fallbackResult, nil
+			}
+		}
+		// If fallback also fails, return empty to skip this message
+		return "", nil
+	}
+
 	slog.Debug("translated", "from", text, "to", result, "target", targetLang, "model", model)
 	return result, nil
+}
+
+// looksLikeSource checks if the translation result is still in the source language.
+// Uses simple heuristic: for ja→zh, check if result contains mostly Japanese-specific chars.
+func looksLikeSource(text, sourceLang, targetLang string) bool {
+	if text == "" {
+		return false
+	}
+	srcShort := strings.SplitN(strings.ToLower(sourceLang), "-", 2)[0]
+	tgtShort := strings.SplitN(strings.ToLower(targetLang), "-", 2)[0]
+
+	if srcShort == tgtShort {
+		return false // same language, can't detect
+	}
+
+	// Count Japanese-specific characters (hiragana + katakana)
+	if srcShort == "ja" && tgtShort == "zh" {
+		jaCount := 0
+		total := 0
+		for _, r := range text {
+			if r < 0x20 || r == ' ' {
+				continue
+			}
+			total++
+			// Hiragana: 3040-309F, Katakana: 30A0-30FF
+			if (r >= 0x3040 && r <= 0x309F) || (r >= 0x30A0 && r <= 0x30FF) {
+				jaCount++
+			}
+		}
+		if total > 0 && float64(jaCount)/float64(total) > 0.3 {
+			return true
+		}
+	}
+	return false
 }
 
 // activeModel returns the current model, auto-recovering from degraded state.
