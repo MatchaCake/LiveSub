@@ -956,6 +956,7 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 			rt := s.getOrCreateRuntime(streamerName)
 			rt.paused[req.Name] = true
 			if rt.ctrl != nil {
+				rt.ctrl.UpdateOutput(req)
 				rt.ctrl.SetPaused(req.Name, true)
 			}
 		}
@@ -1123,6 +1124,7 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 			rt := s.getOrCreateRuntime(streamerName)
 			rt.paused[req.Name] = true
 			if rt.ctrl != nil {
+				rt.ctrl.UpdateOutput(req)
 				rt.ctrl.SetPaused(req.Name, true)
 			}
 		}
