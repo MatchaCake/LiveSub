@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
@@ -71,8 +72,59 @@ func (s *Store) migrate() error {
 			ip TEXT
 		);
 		CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);
+		CREATE TABLE IF NOT EXISTS sessions (
+			token TEXT PRIMARY KEY,
+			user_id INTEGER NOT NULL,
+			expiry DATETIME NOT NULL,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);
 	`)
 	return err
+}
+
+// SaveSession persists a session token.
+func (s *Store) SaveSession(token string, userID int64, expiry time.Time) error {
+	_, err := s.db.Exec("INSERT OR REPLACE INTO sessions (token, user_id, expiry) VALUES (?, ?, ?)",
+		token, userID, expiry.Format(time.RFC3339))
+	return err
+}
+
+// LoadSessions returns all non-expired sessions.
+func (s *Store) LoadSessions() (map[string]*Session, error) {
+	rows, err := s.db.Query("SELECT token, user_id, expiry FROM sessions WHERE expiry > datetime('now', 'localtime')")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]*Session)
+	for rows.Next() {
+		var token string
+		var userID int64
+		var expiryStr string
+		if err := rows.Scan(&token, &userID, &expiryStr); err != nil {
+			continue
+		}
+		t, _ := time.Parse(time.RFC3339, expiryStr)
+		result[token] = &Session{UserID: userID, Expiry: t}
+	}
+	return result, nil
+}
+
+// DeleteSession removes a session.
+func (s *Store) DeleteSession(token string) error {
+	_, err := s.db.Exec("DELETE FROM sessions WHERE token = ?", token)
+	return err
+}
+
+// CleanExpiredSessions removes expired sessions.
+func (s *Store) CleanExpiredSessions() {
+	s.db.Exec("DELETE FROM sessions WHERE expiry <= datetime('now', 'localtime')")
+}
+
+// Session represents a stored session.
+type Session struct {
+	UserID int64
+	Expiry time.Time
 }
 
 // EnsureAdmin creates the admin user if no users exist, or updates password if admin exists.

@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	dm "github.com/MatchaCake/bilibili_dm_lib"
+	"github.com/christian-lee/livesub/internal/bot"
 	"github.com/christian-lee/livesub/internal/controller"
 )
 
@@ -15,21 +16,38 @@ type Handler struct {
 	roomID      int64
 	allowedUIDs map[int64]bool
 	client      *dm.Client
+	pool        *bot.Pool
+	replyBot    string // bot name for sending replies
 
 	mu   sync.RWMutex
 	ctrl *controller.Controller
 }
 
 // New creates a command handler. The dm.Client should already be started.
-func New(roomID int64, allowedUIDs []int64, client *dm.Client) *Handler {
+func New(roomID int64, allowedUIDs []int64, client *dm.Client, opts ...HandlerOption) *Handler {
 	allowed := make(map[int64]bool, len(allowedUIDs))
 	for _, uid := range allowedUIDs {
 		allowed[uid] = true
 	}
-	return &Handler{
+	h := &Handler{
 		roomID:      roomID,
 		allowedUIDs: allowed,
 		client:      client,
+	}
+	for _, o := range opts {
+		o(h)
+	}
+	return h
+}
+
+// HandlerOption configures a Handler.
+type HandlerOption func(*Handler)
+
+// WithPool sets the bot pool for sending replies.
+func WithPool(p *bot.Pool, replyBot string) HandlerOption {
+	return func(h *Handler) {
+		h.pool = p
+		h.replyBot = replyBot
 	}
 }
 
@@ -104,9 +122,9 @@ func (h *Handler) handleDanmaku(d *dm.Danmaku) {
 	if len(parts) == 2 {
 		target := strings.TrimSpace(parts[1])
 		switch action {
-		case "/暂停", "/pause":
+		case "/暂停", "/pause", "/off":
 			h.pauseOutput(ctrl, target, true, d)
-		case "/恢复", "/resume":
+		case "/恢复", "/resume", "/on":
 			h.pauseOutput(ctrl, target, false, d)
 		default:
 			slog.Debug("unknown command", "uid", d.UID, "cmd", text)
@@ -115,12 +133,52 @@ func (h *Handler) handleDanmaku(d *dm.Danmaku) {
 	}
 
 	switch cmd {
-	case "/暂停", "/pause":
+	case "/暂停", "/pause", "/off":
 		h.pauseAll(ctrl, true, d)
-	case "/恢复", "/resume":
+	case "/恢复", "/resume", "/on":
 		h.pauseAll(ctrl, false, d)
+	case "/help", "/帮助":
+		h.sendHelp(ctrl, d)
+	case "/list", "/列表":
+		h.sendList(ctrl, d)
 	default:
 		slog.Debug("unknown command", "uid", d.UID, "cmd", text)
+	}
+}
+
+func (h *Handler) sendHelp(ctrl *controller.Controller, d *dm.Danmaku) {
+	slog.Info("command: help", "uid", d.UID, "user", d.Sender, "room", h.roomID)
+	h.reply(context.Background(), "/off 暂停全部, /off 名称 暂停指定, /on 同理, /list 列表")
+}
+
+func (h *Handler) sendList(ctrl *controller.Controller, d *dm.Danmaku) {
+	slog.Info("command: list", "uid", d.UID, "user", d.Sender, "room", h.roomID)
+	states := ctrl.OutputStates()
+	if len(states) == 0 {
+		h.reply(context.Background(), "当前无输出")
+		return
+	}
+	var parts []string
+	for _, s := range states {
+		status := "▶"
+		if s.Paused {
+			status = "⏸"
+		}
+		parts = append(parts, status+s.Name)
+	}
+	h.reply(context.Background(), strings.Join(parts, " | "))
+}
+
+func (h *Handler) reply(ctx context.Context, msg string) {
+	if h.pool == nil || h.replyBot == "" {
+		return
+	}
+	b := h.pool.Get(h.replyBot)
+	if b == nil {
+		return
+	}
+	if err := b.Send(ctx, h.roomID, msg); err != nil {
+		slog.Warn("command reply failed", "err", err)
 	}
 }
 
