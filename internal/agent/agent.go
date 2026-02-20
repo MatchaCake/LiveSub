@@ -33,7 +33,40 @@ func New(streamer config.StreamerConfig, translator *translate.GeminiTranslator,
 
 // Run starts the Agent pipeline: stream capture → STT → translate → controller.
 // Blocks until ctx is cancelled or the stream ends.
+// Automatically restarts ffmpeg + STT if the audio stream dies.
 func (a *Agent) Run(ctx context.Context) error {
+	sc := a.streamer
+	backoff := time.Second
+	const maxBackoff = 30 * time.Second
+
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		err := a.runPipeline(ctx)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		if err != nil {
+			slog.Warn("pipeline ended, restarting...", "name", sc.Name, "err", err, "backoff", backoff)
+		} else {
+			slog.Warn("pipeline ended normally (stream EOF?), restarting...", "name", sc.Name, "backoff", backoff)
+		}
+
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		backoff = min(backoff*2, maxBackoff)
+	}
+}
+
+// runPipeline runs one cycle of: get stream URL → ffmpeg capture → STT → translate.
+// Returns when the audio stream ends (ffmpeg dies) or ctx is cancelled.
+func (a *Agent) runPipeline(ctx context.Context) error {
 	sc := a.streamer
 
 	// 1. Get live stream URL
@@ -64,44 +97,50 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	resultsCh := make(chan stt.StreamResult, 50)
 
-	// STT reader goroutine with exponential backoff
+	// STT reader goroutine with reconnect on 305s timeout.
+	// Returns (closing resultsCh) when audio EOF is hit — caller restarts pipeline.
 	go func() {
 		defer close(resultsCh)
-		backoff := time.Second
-		const maxBackoff = 30 * time.Second
+		sttBackoff := time.Second
+		const maxSTTBackoff = 30 * time.Second
 
 		for {
 			if ctx.Err() != nil {
 				return
 			}
-			if err := sttClient.Stream(ctx, pauseReader, resultsCh); err != nil {
-				if ctx.Err() != nil {
-					return
-				}
-				slog.Warn("STT stream ended, reconnecting...", "name", sc.Name, "err", err, "backoff", backoff)
-				select {
-				case <-time.After(backoff):
-				case <-ctx.Done():
-					return
-				}
-				newClient, err := stt.NewGoogleSTT(ctx, sc.SourceLang, sc.AltLangs)
-				if err != nil {
-					slog.Error("STT reconnect failed", "err", err)
-					return
-				}
-				if err := sttClient.Close(); err != nil {
-					slog.Warn("close old STT client", "err", err)
-				}
-				sttClient = newClient
-				backoff = min(backoff*2, maxBackoff)
-			} else {
-				backoff = time.Second
+			err := sttClient.Stream(ctx, pauseReader, resultsCh)
+			if ctx.Err() != nil {
+				return
 			}
+
+			if err == nil {
+				// Stream returned nil = audio reader EOF → ffmpeg died.
+				// Signal caller to restart the whole pipeline.
+				slog.Warn("STT stream returned nil (audio EOF), ending pipeline", "name", sc.Name)
+				return
+			}
+
+			// STT error (e.g., 305s timeout) — reconnect STT only, ffmpeg still alive.
+			slog.Warn("STT stream ended, reconnecting...", "name", sc.Name, "err", err, "backoff", sttBackoff)
+			select {
+			case <-time.After(sttBackoff):
+			case <-ctx.Done():
+				return
+			}
+			newClient, err := stt.NewGoogleSTT(ctx, sc.SourceLang, sc.AltLangs)
+			if err != nil {
+				slog.Error("STT reconnect failed", "err", err)
+				return
+			}
+			if err := sttClient.Close(); err != nil {
+				slog.Warn("close old STT client", "err", err)
+			}
+			sttClient = newClient
+			sttBackoff = min(sttBackoff*2, maxSTTBackoff)
 		}
 	}()
 
 	// Dispatch STT results to translation pool
-	// Concurrency: N×3 workers where N = number of outputs
 	workerCount := len(sc.Outputs) * 3
 	if workerCount < 3 {
 		workerCount = 3
