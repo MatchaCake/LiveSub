@@ -342,7 +342,7 @@ func (c *Controller) run(ctx context.Context) {
 				c.flushDelayQueue(ctx, delayQueue)
 				return
 			}
-			// Log transcript once (using first available translation)
+			// Log transcript once per STT result
 			if c.tlog != nil && t.SourceText != "" {
 				logged := false
 				for _, o := range c.outputs {
@@ -368,9 +368,9 @@ func (c *Controller) run(ctx context.Context) {
 						break
 					}
 				}
-				// Fallback: if no active output had translation, log source only
+				// All paused or no translation available: log source text only
 				if !logged {
-					c.tlog.Write(t.SourceLang, t.SourceText, t.SourceLang, t.SourceText)
+					c.tlog.Write(t.SourceLang, t.SourceText, "", "")
 				}
 			}
 
