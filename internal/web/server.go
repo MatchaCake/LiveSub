@@ -161,6 +161,9 @@ func (s *Server) SetLive(streamerName string, live bool) {
 				for _, o := range sc.Outputs {
 					if o.AutoStart {
 						rt.paused[o.Name] = false
+						if rt.ctrl != nil {
+							rt.ctrl.SetPaused(o.Name, false)
+						}
 					}
 				}
 				break
