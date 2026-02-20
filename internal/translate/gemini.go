@@ -121,24 +121,50 @@ func looksLikeSource(text, sourceLang, targetLang string) bool {
 		return false // same language, can't detect
 	}
 
-	// Count Japanese-specific characters (hiragana + katakana)
-	if srcShort == "ja" && tgtShort == "zh" {
-		jaCount := 0
-		total := 0
-		for _, r := range text {
-			if r < 0x20 || r == ' ' {
-				continue
-			}
-			total++
-			// Hiragana: 3040-309F, Katakana: 30A0-30FF
-			if (r >= 0x3040 && r <= 0x309F) || (r >= 0x30A0 && r <= 0x30FF) {
-				jaCount++
-			}
+	// Count character types
+	jaCount := 0    // hiragana + katakana
+	latinCount := 0 // ASCII letters
+	cjkCount := 0   // CJK unified ideographs (shared by zh/ja)
+	total := 0
+	for _, r := range text {
+		if r < 0x20 || r == ' ' {
+			continue
 		}
-		if total > 0 && float64(jaCount)/float64(total) > 0.3 {
-			return true
+		total++
+		if (r >= 0x3040 && r <= 0x309F) || (r >= 0x30A0 && r <= 0x30FF) {
+			jaCount++
+		}
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
+			latinCount++
+		}
+		if r >= 0x4E00 && r <= 0x9FFF {
+			cjkCount++
 		}
 	}
+
+	if total == 0 {
+		return false
+	}
+
+	jaRatio := float64(jaCount) / float64(total)
+	latinRatio := float64(latinCount) / float64(total)
+
+	// Source is Japanese but target is Chinese: check for leftover kana
+	if srcShort == "ja" && tgtShort == "zh" && jaRatio > 0.3 {
+		return true
+	}
+
+	// Target is CJK (zh/ja/ko) but result is mostly Latin = wrong language (English)
+	if (tgtShort == "zh" || tgtShort == "ja" || tgtShort == "ko") && latinRatio > 0.5 {
+		return true
+	}
+
+	// Target is Latin-based (en/fr/de/es) but result is mostly CJK = wrong language
+	if (tgtShort == "en" || tgtShort == "fr" || tgtShort == "de" || tgtShort == "es") &&
+		float64(cjkCount)/float64(total) > 0.3 {
+		return true
+	}
+
 	return false
 }
 
