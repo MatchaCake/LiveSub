@@ -342,6 +342,38 @@ func (c *Controller) run(ctx context.Context) {
 				c.flushDelayQueue(ctx, delayQueue)
 				return
 			}
+			// Log transcript once (using first available translation)
+			if c.tlog != nil && t.SourceText != "" {
+				logged := false
+				for _, o := range c.outputs {
+					if c.IsPaused(o.Name) {
+						continue
+					}
+					targetLang := o.TargetLang
+					if targetLang == "" {
+						targetLang = t.SourceLang
+					}
+					var text string
+					if o.TargetLang == "" {
+						text = t.SourceText
+					} else {
+						text = t.Texts[o.TargetLang]
+						if text == "" && isLangMatch(t.SourceLang, o.TargetLang) {
+							text = t.SourceText
+						}
+					}
+					if text != "" {
+						c.tlog.Write(t.SourceLang, t.SourceText, targetLang, text)
+						logged = true
+						break
+					}
+				}
+				// Fallback: if no active output had translation, log source only
+				if !logged {
+					c.tlog.Write(t.SourceLang, t.SourceText, t.SourceLang, t.SourceText)
+				}
+			}
+
 			for _, o := range c.outputs {
 				var text string
 				if o.TargetLang == "" {
@@ -353,15 +385,6 @@ func (c *Controller) run(ctx context.Context) {
 							text = t.SourceText
 						}
 					}
-				}
-
-				// Log transcript
-				if c.tlog != nil && text != "" {
-					targetLang := o.TargetLang
-					if targetLang == "" {
-						targetLang = t.SourceLang
-					}
-					c.tlog.Write(t.SourceLang, t.SourceText, targetLang, text)
 				}
 
 				// Buffer for ordered sending
