@@ -36,9 +36,6 @@ func NewStore(dbPath string) (*Store, error) {
 	if err := s.migrateBili(); err != nil {
 		return nil, fmt.Errorf("migrate bili: %w", err)
 	}
-	if err := s.migrateStreams(); err != nil {
-		return nil, fmt.Errorf("migrate streams: %w", err)
-	}
 	return s, nil
 }
 

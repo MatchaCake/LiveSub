@@ -43,20 +43,31 @@ func NewBilibiliBot(name string, roomID int64, sessdata, biliJCT string, uid int
 	return b
 }
 
-func (b *BilibiliBot) Platform() string   { return "bilibili" }
-func (b *BilibiliBot) Name() string       { return b.name }
-func (b *BilibiliBot) Available() bool     { return b.sessdata != "" }
-func (b *BilibiliBot) RoomID() int64      { return b.roomID }
-func (b *BilibiliBot) DanmakuMax() int    { return b.danmakuMax }
-func (b *BilibiliBot) MaxMessageLen() int  { return b.danmakuMax }
-func (b *BilibiliBot) SESSDATA() string   { return b.sessdata }
-func (b *BilibiliBot) BiliJCT() string    { return b.biliJCT }
+func (b *BilibiliBot) Platform() string { return "bilibili" }
+func (b *BilibiliBot) Name() string      { return b.name }
 
-// SetRoomID updates the target room for this bot.
-func (b *BilibiliBot) SetRoomID(roomID int64) {
+func (b *BilibiliBot) Available() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.roomID = roomID
+	return b.sessdata != ""
+}
+
+func (b *BilibiliBot) MaxMessageLen() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.danmakuMax
+}
+
+func (b *BilibiliBot) SESSDATA() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.sessdata
+}
+
+func (b *BilibiliBot) BiliJCT() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.biliJCT
 }
 
 // Send sends a danmaku message to the specified room. Long messages are split into chunks.

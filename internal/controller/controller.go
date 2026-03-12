@@ -220,15 +220,16 @@ func (c *Controller) SyncOutputs(outputs []config.OutputConfig) {
 	c.paused = newPaused
 }
 
-// SetShowSeq updates the show_seq flag for an output.
-// GetOutputState returns the output state for mutation. Caller must hold no locks.
-func (c *Controller) GetOutputState(name string) (*OutputState, bool) {
+// SetAutoStart updates the auto_start flag for an output.
+func (c *Controller) SetAutoStart(outputName string, autoStart bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	s, ok := c.outputStates[name]
-	return s, ok
+	if s, ok := c.outputStates[outputName]; ok {
+		s.AutoStart = autoStart
+	}
 }
 
+// SetShowSeq updates the show_seq flag for an output.
 func (c *Controller) SetShowSeq(outputName string, showSeq bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -250,8 +251,8 @@ func (c *Controller) IsPaused(outputName string) bool {
 	return c.paused[outputName]
 }
 
-// IsAnyPaused returns true if ALL outputs are paused (gates STT).
-func (c *Controller) IsAnyPaused() bool {
+// IsAllPaused returns true if ALL outputs are paused (gates STT audio gating).
+func (c *Controller) IsAllPaused() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	for _, p := range c.paused {
@@ -342,10 +343,15 @@ func (c *Controller) run(ctx context.Context) {
 				c.flushDelayQueue(ctx, delayQueue)
 				return
 			}
+			// Snapshot outputs under lock (SyncOutputs may replace the slice concurrently)
+			c.mu.RLock()
+			outputs := c.outputs
+			c.mu.RUnlock()
+
 			// Log transcript once per STT result
 			if c.tlog != nil && t.SourceText != "" {
 				logged := false
-				for _, o := range c.outputs {
+				for _, o := range outputs {
 					if c.IsPaused(o.Name) {
 						continue
 					}
@@ -374,7 +380,7 @@ func (c *Controller) run(ctx context.Context) {
 				}
 			}
 
-			for _, o := range c.outputs {
+			for _, o := range outputs {
 				var text string
 				if o.TargetLang == "" {
 					text = t.SourceText
@@ -387,8 +393,12 @@ func (c *Controller) run(ctx context.Context) {
 					}
 				}
 
-				// Buffer for ordered sending
+				// Buffer for ordered sending (lazily init for outputs added via SyncOutputs)
 				s := senders[o.Name]
+				if s == nil {
+					s = &outputSender{pending: make(map[int]string)}
+					senders[o.Name] = s
+				}
 				s.pending[t.Seq] = text
 
 				// Flush in order → push to delay queue
@@ -511,17 +521,22 @@ func (c *Controller) flushDelayQueue(ctx context.Context, queue []delayedMsg) {
 }
 
 func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
-	// Find output config
-	var o *config.OutputConfig
+	// Find output config (snapshot under lock to avoid race with SyncOutputs)
+	c.mu.RLock()
+	var oCopy config.OutputConfig
+	found := false
 	for i := range c.outputs {
 		if c.outputs[i].Name == dm.output {
-			o = &c.outputs[i]
+			oCopy = c.outputs[i]
+			found = true
 			break
 		}
 	}
-	if o == nil {
+	c.mu.RUnlock()
+	if !found {
 		return
 	}
+	o := &oCopy
 
 	// Pick bot via round-robin from account pool
 	accts := o.AccountPool()

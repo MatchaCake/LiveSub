@@ -255,8 +255,6 @@ func run(cfgPath string) error {
 				mon.AddRoom(s.RoomID)
 			}
 		}
-
-		webServer.SetLive(newCfg.Streamers[0].Name, false)
 	})
 
 	webServer.Start()

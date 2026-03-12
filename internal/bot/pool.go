@@ -27,13 +27,6 @@ func (p *Pool) Get(name string) Bot {
 	return p.bots[name]
 }
 
-// Remove removes a bot by name.
-func (p *Pool) Remove(name string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	delete(p.bots, name)
-}
-
 // All returns all bots.
 func (p *Pool) All() []Bot {
 	p.mu.RLock()

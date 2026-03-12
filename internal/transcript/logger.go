@@ -222,22 +222,6 @@ func ListFiles(dir string) ([]FileInfo, error) {
 	return files, nil
 }
 
-// ListFilesForRoom returns transcripts for a specific room.
-func ListFilesForRoom(dir string, roomID int64) ([]FileInfo, error) {
-	all, err := ListFiles(dir)
-	if err != nil {
-		return nil, err
-	}
-	prefix := fmt.Sprintf("%d_", roomID)
-	var filtered []FileInfo
-	for _, f := range all {
-		if strings.HasPrefix(f.Name, prefix) {
-			filtered = append(filtered, f)
-		}
-	}
-	return filtered, nil
-}
-
 // FileInfo describes a transcript file.
 type FileInfo struct {
 	Name    string `json:"name"`

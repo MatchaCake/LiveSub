@@ -92,7 +92,7 @@ func (a *Agent) runPipeline(ctx context.Context) error {
 
 	// Pipeline: STT → Translate fan-out → Controller
 	pauseReader := &pausableReader{inner: audioReader, isPaused: func() bool {
-		return a.ctrl.IsAnyPaused()
+		return a.ctrl.IsAllPaused()
 	}}
 
 	resultsCh := make(chan stt.StreamResult, 50)
@@ -158,7 +158,7 @@ func (a *Agent) runPipeline(ctx context.Context) error {
 		slog.Info("STT final", "name", sc.Name,
 			"conf", result.Confidence, "text", result.Text, "lang", result.Language)
 
-		if a.ctrl.IsAnyPaused() {
+		if a.ctrl.IsAllPaused() {
 			continue
 		}
 
@@ -182,12 +182,12 @@ func (a *Agent) runPipeline(ctx context.Context) error {
 type pausableReader struct {
 	inner    io.ReadCloser
 	isPaused func() bool
+	drain    [3200]byte // pre-allocated buffer for draining audio while paused (100ms of 16kHz 16-bit mono)
 }
 
 func (r *pausableReader) Read(p []byte) (int, error) {
 	for r.isPaused() {
-		buf := make([]byte, 3200) // 100ms of 16kHz 16-bit mono
-		if _, err := r.inner.Read(buf); err != nil {
+		if _, err := r.inner.Read(r.drain[:]); err != nil {
 			return 0, err
 		}
 		time.Sleep(50 * time.Millisecond)

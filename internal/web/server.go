@@ -362,6 +362,49 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(u)
 }
 
+// streamerStates builds the current state for all streamers, optionally filtering by room.
+// Caller must hold s.mu.RLock.
+func (s *Server) streamerStates(filterRooms map[int64]bool) []StreamerState {
+	var states []StreamerState
+	for _, sc := range s.cfg.Streamers {
+		if filterRooms != nil && !filterRooms[sc.RoomID] {
+			continue
+		}
+		state := StreamerState{RoomID: sc.RoomID, Name: sc.Name}
+		rt := s.streamers[sc.Name]
+		if rt != nil {
+			state.Live = rt.live
+			if rt.ctrl != nil {
+				state.Outputs = rt.ctrl.OutputStates()
+			}
+		}
+		if state.Outputs == nil {
+			state.Outputs = make([]controller.OutputState, len(sc.Outputs))
+			for i, o := range sc.Outputs {
+				paused := false
+				if rt != nil {
+					paused = rt.paused[o.Name]
+				}
+				state.Outputs[i] = controller.OutputState{
+					Name:       o.Name,
+					Platform:   o.Platform,
+					TargetLang: o.TargetLang,
+					BotName:    o.Account,
+					BotNames:   o.AccountPool(),
+					Paused:     paused,
+					ShowSeq:    o.ShowSeq,
+					AutoStart:  o.AutoStart,
+				}
+			}
+		}
+		states = append(states, state)
+	}
+	if states == nil {
+		states = []StreamerState{}
+	}
+	return states
+}
+
 // --- Status handler (multi-streamer) ---
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -384,63 +427,14 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var streamers []StreamerState
-	for _, sc := range s.cfg.Streamers {
-		// Filter by user permissions
-		if userRooms != nil && !userRooms[sc.RoomID] {
-			continue
-		}
-
-		state := StreamerState{
-			RoomID: sc.RoomID,
-			Name:   sc.Name,
-		}
-
-		rt := s.streamers[sc.Name]
-		if rt != nil {
-			state.Live = rt.live
-			if rt.ctrl != nil {
-				state.Outputs = rt.ctrl.OutputStates()
-			}
-		}
-
-		// If no controller, show configured outputs with server-level pause state
-		if state.Outputs == nil {
-			state.Outputs = make([]controller.OutputState, len(sc.Outputs))
-			for i, o := range sc.Outputs {
-				paused := false
-				if rt != nil {
-					paused = rt.paused[o.Name]
-				}
-				state.Outputs[i] = controller.OutputState{
-					Name:       o.Name,
-					Platform:   o.Platform,
-					TargetLang: o.TargetLang,
-					BotName:    o.Account,
-					BotNames:   o.AccountPool(),
-					Paused:     paused,
-					ShowSeq:    o.ShowSeq,
-					AutoStart:  o.AutoStart,
-				}
-			}
-		}
-
-		streamers = append(streamers, state)
-	}
-
-	if streamers == nil {
-		streamers = []StreamerState{}
-	}
-
-	resp := StatusResponse{
-		Streamers: streamers,
-		BotNames:  s.pool.Names(),
-	}
+	streamers := s.streamerStates(userRooms)
+	s.mu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	json.NewEncoder(w).Encode(StatusResponse{
+		Streamers: streamers,
+		BotNames:  s.pool.Names(),
+	})
 }
 
 func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
@@ -517,14 +511,11 @@ func (s *Server) handleToggleAutoStart(w http.ResponseWriter, r *http.Request) {
 				if s.cfg.Streamers[i].Outputs[j].Name == outputName {
 					s.cfg.Streamers[i].Outputs[j].AutoStart = !s.cfg.Streamers[i].Outputs[j].AutoStart
 					newVal := s.cfg.Streamers[i].Outputs[j].AutoStart
-					// Only update controller's AutoStart field if active
 					rt := s.streamers[streamerName]
-					if rt != nil && rt.ctrl != nil {
-						if st, ok := rt.ctrl.GetOutputState(outputName); ok {
-							st.AutoStart = newVal
-						}
-					}
 					s.mu.Unlock()
+					if rt != nil && rt.ctrl != nil {
+						rt.ctrl.SetAutoStart(outputName, newVal)
+					}
 					config.Save(s.cfgPath, s.cfg)
 					w.Header().Set("Content-Type", "application/json")
 					json.NewEncoder(w).Encode(map[string]any{"ok": true, "auto_start": newVal})
@@ -595,34 +586,10 @@ func (s *Server) doBroadcast() {
 	}
 
 	s.mu.RLock()
-	var streamers []StreamerState
-	for _, sc := range s.cfg.Streamers {
-		state := StreamerState{RoomID: sc.RoomID, Name: sc.Name}
-		rt := s.streamers[sc.Name]
-		if rt != nil {
-			state.Live = rt.live
-			if rt.ctrl != nil {
-				state.Outputs = rt.ctrl.OutputStates()
-			}
-		}
-		if state.Outputs == nil {
-			state.Outputs = make([]controller.OutputState, len(sc.Outputs))
-			for i, o := range sc.Outputs {
-				paused := false
-				if rt != nil {
-					paused = rt.paused[o.Name]
-				}
-				state.Outputs[i] = controller.OutputState{
-					Name: o.Name, Platform: o.Platform, TargetLang: o.TargetLang,
-					BotName: o.Account, BotNames: o.AccountPool(), Paused: paused, ShowSeq: o.ShowSeq,
-				}
-			}
-		}
-		streamers = append(streamers, state)
-	}
+	streamers := s.streamerStates(nil)
 	s.mu.RUnlock()
 
-	data, _ := json.Marshal(StatusResponse{Streamers: streamers})
+	data, _ := json.Marshal(StatusResponse{Streamers: streamers, BotNames: s.pool.Names()})
 	for _, c := range conns {
 		if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
 			s.wsMu.Lock()
@@ -663,7 +630,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		users, err := s.store.ListUserDetails()
 		if err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, 500)
+			jsonError(w, err.Error(), 500)
 			return
 		}
 		if users == nil {
@@ -689,7 +656,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		u, err := s.store.CreateUser(req.Username, req.Password, req.IsAdmin)
 		if err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, 400)
+			jsonError(w, err.Error(), 400)
 			return
 		}
 		if req.Rooms != nil {
@@ -753,7 +720,7 @@ func (s *Server) handleAdminUser(w http.ResponseWriter, r *http.Request) {
 
 	case "DELETE":
 		if err := s.store.DeleteUser(id); err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, 500)
+			jsonError(w, err.Error(), 500)
 			return
 		}
 		s.audit(r, "删除用户", fmt.Sprintf("ID=%d", id))
@@ -877,7 +844,7 @@ func (s *Server) handleBiliAccounts(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	accounts, err := s.store.ListBiliAccountSummaries()
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, 500)
+		jsonError(w, err.Error(), 500)
 		return
 	}
 	if accounts == nil {
@@ -1125,12 +1092,13 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		// Sync full output list to controller
-		{
-			rt := s.getOrCreateRuntime(streamerName)
-			rt.paused[req.Name] = true
-			if rt.ctrl != nil {
-				rt.ctrl.SyncOutputs(sc.Outputs)
-			}
+		s.mu.Lock()
+		rt := s.getOrCreateRuntime(streamerName)
+		rt.paused[req.Name] = true
+		ctrl := rt.ctrl
+		s.mu.Unlock()
+		if ctrl != nil {
+			ctrl.SyncOutputs(sc.Outputs)
 		}
 		action := "add_output"
 		if found {
@@ -1159,8 +1127,11 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 		s.audit(r, "delete_output", fmt.Sprintf("%s / %s", streamerName, outputName))
 		json.NewEncoder(w).Encode(map[string]any{"ok": true})
 		// Sync to controller
-		if rt := s.streamers[streamerName]; rt != nil && rt.ctrl != nil {
-			rt.ctrl.SyncOutputs(sc.Outputs)
+		s.mu.RLock()
+		delRT := s.streamers[streamerName]
+		s.mu.RUnlock()
+		if delRT != nil && delRT.ctrl != nil {
+			delRT.ctrl.SyncOutputs(sc.Outputs)
 		}
 
 	default:
@@ -1296,12 +1267,13 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		// Sync full output list to controller
-		{
-			rt := s.getOrCreateRuntime(streamerName)
-			rt.paused[req.Name] = true
-			if rt.ctrl != nil {
-				rt.ctrl.SyncOutputs(sc.Outputs)
-			}
+		s.mu.Lock()
+		rt := s.getOrCreateRuntime(streamerName)
+		rt.paused[req.Name] = true
+		ctrl := rt.ctrl
+		s.mu.Unlock()
+		if ctrl != nil {
+			ctrl.SyncOutputs(sc.Outputs)
 		}
 		action := "add_output"
 		if found {
@@ -1329,8 +1301,11 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 		}
 		s.audit(r, "delete_output", fmt.Sprintf("%s / %s", streamerName, outputName))
 		json.NewEncoder(w).Encode(map[string]any{"ok": true})
-		if rt := s.streamers[streamerName]; rt != nil && rt.ctrl != nil {
-			rt.ctrl.SyncOutputs(sc.Outputs)
+		s.mu.RLock()
+		delRT := s.streamers[streamerName]
+		s.mu.RUnlock()
+		if delRT != nil && delRT.ctrl != nil {
+			delRT.ctrl.SyncOutputs(sc.Outputs)
 		}
 
 	default:
@@ -1348,7 +1323,7 @@ func (s *Server) handleAdminAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := s.store.GetAuditLog(limit)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, 500)
+		jsonError(w, err.Error(), 500)
 		return
 	}
 	if entries == nil {
@@ -1389,4 +1364,11 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, adminHTML)
+}
+
+// jsonError writes a JSON error response with proper escaping.
+func jsonError(w http.ResponseWriter, msg string, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
