@@ -181,6 +181,3 @@ func (t *GeminiTranslator) activeModel() string {
 	return t.model
 }
 
-func (t *GeminiTranslator) Close() {
-	// genai client doesn't need explicit close
-}

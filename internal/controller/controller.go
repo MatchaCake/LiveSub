@@ -83,27 +83,42 @@ func (c *Controller) notifyChange() {
 	}
 }
 
+// newOutputState creates an OutputState from config.
+func newOutputState(o config.OutputConfig) *OutputState {
+	accts := o.AccountPool()
+	botName := o.Account
+	if len(accts) > 0 {
+		botName = accts[0]
+	}
+	return &OutputState{
+		Name:       o.Name,
+		Platform:   o.Platform,
+		TargetLang: o.TargetLang,
+		BotName:    botName,
+		BotNames:   accts,
+		RoomID:     o.RoomID,
+		ShowSeq:    o.ShowSeq,
+		AutoStart:  o.AutoStart,
+	}
+}
+
+// syncOutputState updates an existing OutputState from config.
+func syncOutputState(s *OutputState, o config.OutputConfig) {
+	s.Platform = o.Platform
+	s.TargetLang = o.TargetLang
+	s.BotName = o.Account
+	s.BotNames = o.AccountPool()
+	s.RoomID = o.RoomID
+	s.ShowSeq = o.ShowSeq
+}
+
 // New creates a Controller with the given bot pool and output configuration.
 // streamerRoomID is the room being monitored; used as fallback when output room_id=0.
 func New(pool *bot.Pool, outputs []config.OutputConfig, tlog *transcript.Logger, streamerRoomID int64) *Controller {
 	states := make(map[string]*OutputState)
 	paused := make(map[string]bool)
 	for _, o := range outputs {
-		accts := o.AccountPool()
-		botName := o.Account
-		if len(accts) > 0 {
-			botName = accts[0]
-		}
-		states[o.Name] = &OutputState{
-			Name:       o.Name,
-			Platform:   o.Platform,
-			TargetLang: o.TargetLang,
-			BotName:    botName,
-			BotNames:   accts,
-			RoomID:     o.RoomID,
-			ShowSeq:    o.ShowSeq,
-			AutoStart:  o.AutoStart,
-		}
+		states[o.Name] = newOutputState(o)
 		paused[o.Name] = false
 	}
 
@@ -171,13 +186,7 @@ func (c *Controller) UpdateOutput(cfg config.OutputConfig) {
 		}
 	}
 	if s, ok := c.outputStates[cfg.Name]; ok {
-		accts := cfg.AccountPool()
-		s.Platform = cfg.Platform
-		s.TargetLang = cfg.TargetLang
-		s.BotName = cfg.Account
-		s.BotNames = accts
-		s.RoomID = cfg.RoomID
-		s.ShowSeq = cfg.ShowSeq
+		syncOutputState(s, cfg)
 	}
 }
 
@@ -191,28 +200,12 @@ func (c *Controller) SyncOutputs(outputs []config.OutputConfig) {
 	newStates := make(map[string]*OutputState)
 	newPaused := make(map[string]bool)
 	for _, o := range outputs {
-		accts := o.AccountPool()
 		if existing, ok := c.outputStates[o.Name]; ok {
-			// Update fields from config
-			existing.Platform = o.Platform
-			existing.TargetLang = o.TargetLang
-			existing.BotName = o.Account
-			existing.BotNames = accts
-			existing.RoomID = o.RoomID
-			existing.ShowSeq = o.ShowSeq
+			syncOutputState(existing, o)
 			newStates[o.Name] = existing
 			newPaused[o.Name] = c.paused[o.Name]
 		} else {
-			// New output — default paused
-			newStates[o.Name] = &OutputState{
-				Name:       o.Name,
-				Platform:   o.Platform,
-				TargetLang: o.TargetLang,
-				BotName:    o.Account,
-				BotNames:   accts,
-				RoomID:     o.RoomID,
-				ShowSeq:    o.ShowSeq,
-			}
+			newStates[o.Name] = newOutputState(o)
 			newPaused[o.Name] = true
 		}
 	}

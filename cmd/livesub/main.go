@@ -88,8 +88,6 @@ func run(cfgPath string) error {
 	if err != nil {
 		return fmt.Errorf("init translator: %w", err)
 	}
-	defer translator.Close()
-
 	// Init bot pool from config
 	pool := bot.NewPool()
 	for _, bc := range cfg.Bots {

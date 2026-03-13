@@ -37,12 +37,6 @@ type StatusResponse struct {
 	BotNames  []string        `json:"bot_names"`
 }
 
-// session stores user info
-type session struct {
-	UserID int64
-	Expiry time.Time
-}
-
 // streamerRuntime tracks runtime state for a single streamer.
 type streamerRuntime struct {
 	live   bool
@@ -57,7 +51,7 @@ type Server struct {
 	store           *auth.Store
 	cfg             *config.Config
 	cfgPath         string
-	sessions        sync.Map // token → session
+	sessions        sync.Map // token → *auth.Session
 	onAccountChange  func()
 	onStreamerChange func()
 	transcriptDir   string
@@ -87,7 +81,7 @@ func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string
 	s.store.CleanExpiredSessions()
 	if saved, err := s.store.LoadSessions(); err == nil {
 		for token, sess := range saved {
-			s.sessions.Store(token, &session{UserID: sess.UserID, Expiry: sess.Expiry})
+			s.sessions.Store(token, sess)
 		}
 		if len(saved) > 0 {
 			slog.Info("restored sessions", "count", len(saved))
@@ -172,6 +166,39 @@ func (s *Server) SetLive(streamerName string, live bool) {
 	}
 }
 
+// allAccountNames merges pool bot names with DB account names (deduped).
+func (s *Server) allAccountNames() []string {
+	names := s.pool.Names()
+	dbAccounts, err := s.store.ListBiliAccountSummaries()
+	if err != nil {
+		return names
+	}
+	seen := make(map[string]bool, len(names))
+	for _, n := range names {
+		seen[n] = true
+	}
+	for _, a := range dbAccounts {
+		if !seen[a.Name] {
+			names = append(names, a.Name)
+		}
+	}
+	return names
+}
+
+// findOutput returns a pointer to the named output config. Caller must hold s.mu.
+func (s *Server) findOutput(streamerName, outputName string) *config.OutputConfig {
+	for i := range s.cfg.Streamers {
+		if s.cfg.Streamers[i].Name == streamerName {
+			for j := range s.cfg.Streamers[i].Outputs {
+				if s.cfg.Streamers[i].Outputs[j].Name == outputName {
+					return &s.cfg.Streamers[i].Outputs[j]
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (s *Server) getOrCreateRuntime(name string) *streamerRuntime {
 	rt, ok := s.streamers[name]
 	if !ok {
@@ -235,7 +262,7 @@ func (s *Server) generateToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func (s *Server) getSession(r *http.Request) *session {
+func (s *Server) getSession(r *http.Request) *auth.Session {
 	cookie, err := r.Cookie("livesub_token")
 	if err != nil {
 		return nil
@@ -244,7 +271,7 @@ func (s *Server) getSession(r *http.Request) *session {
 	if !ok {
 		return nil
 	}
-	sess := val.(*session)
+	sess := val.(*auth.Session)
 	if time.Now().After(sess.Expiry) {
 		s.sessions.Delete(cookie.Value)
 		s.store.DeleteSession(cookie.Value)
@@ -307,9 +334,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	u, err := s.store.Authenticate(username, password)
 	if err != nil || u == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(401)
-		json.NewEncoder(w).Encode(map[string]string{"error": "用户名或密码错误"})
+		jsonError(w, "用户名或密码错误", 401)
 		return
 	}
 
@@ -320,7 +345,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	expiry := time.Now().Add(7 * 24 * time.Hour)
-	s.sessions.Store(token, &session{UserID: u.ID, Expiry: expiry})
+	s.sessions.Store(token, &auth.Session{UserID: u.ID, Expiry: expiry})
 	s.store.SaveSession(token, u.ID, expiry)
 
 	http.SetCookie(w, &http.Cookie{
@@ -338,8 +363,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	s.store.Log(u.ID, u.Username, "登录", "", ip)
 	slog.Info("user logged in", "username", username, "admin", u.IsAdmin, "ip", r.RemoteAddr)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "is_admin": u.IsAdmin})
+	jsonOK(w, map[string]any{"ok": true, "is_admin": u.IsAdmin})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -358,8 +382,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"unauthorized"}`, 401)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(u)
+	jsonOK(w, u)
 }
 
 // streamerStates builds the current state for all streamers, optionally filtering by room.
@@ -430,8 +453,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	streamers := s.streamerStates(userRooms)
 	s.mu.RUnlock()
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(StatusResponse{
+	jsonOK(w, StatusResponse{
 		Streamers: streamers,
 		BotNames:  s.pool.Names(),
 	})
@@ -467,65 +489,49 @@ func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
 		s.audit(r, "恢复翻译", fmt.Sprintf("%s / %s", streamerName, outputName))
 	}
 	slog.Info("output toggled", "streamer", streamerName, "output", outputName, "paused", paused, "user", u.Username)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"streamer": streamerName, "output": outputName, "paused": paused})
+	jsonOK(w, map[string]any{"streamer": streamerName, "output": outputName, "paused": paused})
 }
 
 func (s *Server) handleToggleSeq(w http.ResponseWriter, r *http.Request) {
-	streamerName := r.URL.Query().Get("streamer")
-	outputName := r.URL.Query().Get("output")
-
-	s.mu.Lock()
-	// Toggle show_seq in config
-	for i := range s.cfg.Streamers {
-		if s.cfg.Streamers[i].Name == streamerName {
-			for j := range s.cfg.Streamers[i].Outputs {
-				if s.cfg.Streamers[i].Outputs[j].Name == outputName {
-					s.cfg.Streamers[i].Outputs[j].ShowSeq = !s.cfg.Streamers[i].Outputs[j].ShowSeq
-					newVal := s.cfg.Streamers[i].Outputs[j].ShowSeq
-					rt := s.streamers[streamerName]
-					s.mu.Unlock()
-					if rt != nil && rt.ctrl != nil {
-						rt.ctrl.SetShowSeq(outputName, newVal)
-					}
-					config.Save(s.cfgPath, s.cfg)
-					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(map[string]any{"ok": true, "show_seq": newVal})
-					return
-				}
-			}
-		}
-	}
-	s.mu.Unlock()
-	http.Error(w, `{"error":"not found"}`, 404)
+	s.toggleOutputBool(w, r, "show_seq",
+		func(o *config.OutputConfig) *bool { return &o.ShowSeq },
+		func(ctrl *controller.Controller, name string, val bool) { ctrl.SetShowSeq(name, val) },
+	)
 }
 
 func (s *Server) handleToggleAutoStart(w http.ResponseWriter, r *http.Request) {
+	s.toggleOutputBool(w, r, "auto_start",
+		func(o *config.OutputConfig) *bool { return &o.AutoStart },
+		func(ctrl *controller.Controller, name string, val bool) { ctrl.SetAutoStart(name, val) },
+	)
+}
+
+// toggleOutputBool is a generic toggle for a bool field on an output config.
+func (s *Server) toggleOutputBool(w http.ResponseWriter, r *http.Request, fieldName string,
+	getField func(*config.OutputConfig) *bool,
+	syncCtrl func(*controller.Controller, string, bool),
+) {
 	streamerName := r.URL.Query().Get("streamer")
 	outputName := r.URL.Query().Get("output")
 
 	s.mu.Lock()
-	for i := range s.cfg.Streamers {
-		if s.cfg.Streamers[i].Name == streamerName {
-			for j := range s.cfg.Streamers[i].Outputs {
-				if s.cfg.Streamers[i].Outputs[j].Name == outputName {
-					s.cfg.Streamers[i].Outputs[j].AutoStart = !s.cfg.Streamers[i].Outputs[j].AutoStart
-					newVal := s.cfg.Streamers[i].Outputs[j].AutoStart
-					rt := s.streamers[streamerName]
-					s.mu.Unlock()
-					if rt != nil && rt.ctrl != nil {
-						rt.ctrl.SetAutoStart(outputName, newVal)
-					}
-					config.Save(s.cfgPath, s.cfg)
-					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(map[string]any{"ok": true, "auto_start": newVal})
-					return
-				}
-			}
-		}
+	o := s.findOutput(streamerName, outputName)
+	if o == nil {
+		s.mu.Unlock()
+		http.Error(w, `{"error":"not found"}`, 404)
+		return
 	}
+	field := getField(o)
+	*field = !*field
+	newVal := *field
+	rt := s.streamers[streamerName]
 	s.mu.Unlock()
-	http.Error(w, `{"error":"not found"}`, 404)
+
+	if rt != nil && rt.ctrl != nil {
+		syncCtrl(rt.ctrl, outputName, newVal)
+	}
+	config.Save(s.cfgPath, s.cfg)
+	jsonOK(w, map[string]any{"ok": true, fieldName: newVal})
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -617,15 +623,12 @@ func (s *Server) handleSkip(w http.ResponseWriter, r *http.Request) {
 		ctrl.SkipPending(msgID)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "skipped": msgID})
+	jsonOK(w, map[string]any{"ok": true, "skipped": msgID})
 }
 
 // --- Admin handlers ---
 
 func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	switch r.Method {
 	case "GET":
 		users, err := s.store.ListUserDetails()
@@ -636,7 +639,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		if users == nil {
 			users = []auth.UserDetail{}
 		}
-		json.NewEncoder(w).Encode(users)
+		jsonOK(w, users)
 
 	case "POST":
 		var req struct {
@@ -672,7 +675,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		detail, _ := s.store.GetUserDetail(u.ID)
 		s.audit(r, "创建用户", req.Username)
 		slog.Info("user created", "username", req.Username, "admin", req.IsAdmin)
-		json.NewEncoder(w).Encode(detail)
+		jsonOK(w, detail)
 
 	default:
 		http.Error(w, "method not allowed", 405)
@@ -680,7 +683,6 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminUser(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	idStr := r.URL.Query().Get("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -716,7 +718,7 @@ func (s *Server) handleAdminUser(w http.ResponseWriter, r *http.Request) {
 		}
 		detail, _ := s.store.GetUserDetail(id)
 		s.audit(r, "编辑用户", fmt.Sprintf("ID=%d %s", id, detail.Username))
-		json.NewEncoder(w).Encode(detail)
+		jsonOK(w, detail)
 
 	case "DELETE":
 		if err := s.store.DeleteUser(id); err != nil {
@@ -725,7 +727,7 @@ func (s *Server) handleAdminUser(w http.ResponseWriter, r *http.Request) {
 		}
 		s.audit(r, "删除用户", fmt.Sprintf("ID=%d", id))
 		slog.Info("user deleted", "id", id)
-		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+		jsonOK(w, map[string]string{"ok": "true"})
 
 	default:
 		http.Error(w, "method not allowed", 405)
@@ -733,20 +735,7 @@ func (s *Server) handleAdminUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminAllAccounts(w http.ResponseWriter, r *http.Request) {
-	names := s.pool.Names()
-	if dbAccounts, err := s.store.ListBiliAccountSummaries(); err == nil {
-		seen := make(map[string]bool)
-		for _, n := range names {
-			seen[n] = true
-		}
-		for _, a := range dbAccounts {
-			if !seen[a.Name] {
-				names = append(names, a.Name)
-			}
-		}
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(names)
+	jsonOK(w, s.allAccountNames())
 }
 
 // --- Transcripts ---
@@ -758,11 +747,9 @@ func (s *Server) handleTranscripts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
 	files, err := transcript.ListFiles(s.transcriptDir)
 	if err != nil {
-		json.NewEncoder(w).Encode([]transcript.FileInfo{})
+		jsonOK(w, []transcript.FileInfo{})
 		return
 	}
 	if files == nil {
@@ -793,7 +780,7 @@ func (s *Server) handleTranscripts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(files)
+	jsonOK(w, files)
 }
 
 func (s *Server) handleTranscriptDownload(w http.ResponseWriter, r *http.Request) {
@@ -841,7 +828,6 @@ func (s *Server) handleTranscriptDownload(w http.ResponseWriter, r *http.Request
 // --- Bilibili Account Management ---
 
 func (s *Server) handleBiliAccounts(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	accounts, err := s.store.ListBiliAccountSummaries()
 	if err != nil {
 		jsonError(w, err.Error(), 500)
@@ -850,11 +836,10 @@ func (s *Server) handleBiliAccounts(w http.ResponseWriter, r *http.Request) {
 	if accounts == nil {
 		accounts = []auth.BiliAccountSummary{}
 	}
-	json.NewEncoder(w).Encode(accounts)
+	jsonOK(w, accounts)
 }
 
 func (s *Server) handleBiliAccount(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	idStr := r.URL.Query().Get("id")
 	id, _ := strconv.ParseInt(idStr, 10, 64)
 
@@ -873,7 +858,7 @@ func (s *Server) handleBiliAccount(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.notifyAccountChange()
-		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+		jsonOK(w, map[string]string{"ok": "true"})
 
 	case "DELETE":
 		if err := s.store.DeleteBiliAccount(id); err != nil {
@@ -881,7 +866,7 @@ func (s *Server) handleBiliAccount(w http.ResponseWriter, r *http.Request) {
 		}
 		s.audit(r, "删除B站账号", fmt.Sprintf("ID=%d", id))
 		s.notifyAccountChange()
-		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+		jsonOK(w, map[string]string{"ok": "true"})
 
 	default:
 		http.Error(w, "method not allowed", 405)
@@ -891,13 +876,10 @@ func (s *Server) handleBiliAccount(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBiliQRGenerate(w http.ResponseWriter, r *http.Request) {
 	qr, err := auth.GenerateQRCode()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(500)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		jsonError(w, err.Error(), 500)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(qr)
+	jsonOK(w, qr)
 }
 
 func (s *Server) handleBiliQRPoll(w http.ResponseWriter, r *http.Request) {
@@ -909,13 +891,9 @@ func (s *Server) handleBiliQRPoll(w http.ResponseWriter, r *http.Request) {
 
 	result, err := auth.PollQRCode(qrcodeKey)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(500)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		jsonError(w, err.Error(), 500)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
 
 	if result.Status == "confirmed" {
 		name := fmt.Sprintf("UID_%d", result.UID)
@@ -925,14 +903,14 @@ func (s *Server) handleBiliQRPoll(w http.ResponseWriter, r *http.Request) {
 
 		acc, err := s.store.SaveBiliAccount(name, result.SESSDATA, result.BiliJCT, result.UID, 20, "")
 		if err != nil {
-			json.NewEncoder(w).Encode(map[string]string{"status": "error", "error": err.Error()})
+			jsonOK(w, map[string]string{"status": "error", "error": err.Error()})
 			return
 		}
 
 		s.audit(r, "添加B站账号", fmt.Sprintf("%s (UID: %d)", name, result.UID))
 		s.notifyAccountChange()
 
-		json.NewEncoder(w).Encode(map[string]any{
+		jsonOK(w, map[string]any{
 			"status": "confirmed",
 			"name":   name,
 			"uid":    result.UID,
@@ -941,7 +919,7 @@ func (s *Server) handleBiliQRPoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{"status": result.Status})
+	jsonOK(w, map[string]string{"status": result.Status})
 }
 
 func (s *Server) notifyAccountChange() {
@@ -954,11 +932,9 @@ func (s *Server) notifyAccountChange() {
 
 // handleAdminStreamers handles GET (list), POST (add/update), DELETE (remove) streamers.
 func (s *Server) handleAdminStreamers(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	switch r.Method {
 	case "GET":
-		json.NewEncoder(w).Encode(s.cfg.Streamers)
+		jsonOK(w, s.cfg.Streamers)
 
 	case "POST":
 		var req config.StreamerConfig
@@ -1003,7 +979,7 @@ func (s *Server) handleAdminStreamers(w http.ResponseWriter, r *http.Request) {
 		if s.onStreamerChange != nil {
 			go s.onStreamerChange()
 		}
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		jsonOK(w, map[string]any{"ok": true})
 
 	case "DELETE":
 		name := r.URL.Query().Get("name")
@@ -1029,7 +1005,7 @@ func (s *Server) handleAdminStreamers(w http.ResponseWriter, r *http.Request) {
 		if s.onStreamerChange != nil {
 			go s.onStreamerChange()
 		}
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		jsonOK(w, map[string]any{"ok": true})
 
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, 405)
@@ -1038,22 +1014,13 @@ func (s *Server) handleAdminStreamers(w http.ResponseWriter, r *http.Request) {
 
 // handleAdminStreamerOutputs manages outputs for a specific streamer.
 func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	streamerName := r.URL.Query().Get("streamer")
 	if streamerName == "" {
 		http.Error(w, `{"error":"streamer name required"}`, 400)
 		return
 	}
 
-	// Find streamer
-	var sc *config.StreamerConfig
-	for i := range s.cfg.Streamers {
-		if s.cfg.Streamers[i].Name == streamerName {
-			sc = &s.cfg.Streamers[i]
-			break
-		}
-	}
+	sc := s.cfg.FindStreamer(streamerName)
 	if sc == nil {
 		http.Error(w, `{"error":"streamer not found"}`, 404)
 		return
@@ -1061,7 +1028,7 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 
 	switch r.Method {
 	case "GET":
-		json.NewEncoder(w).Encode(sc.Outputs)
+		jsonOK(w, sc.Outputs)
 
 	case "POST", "PUT":
 		var req config.OutputConfig
@@ -1105,7 +1072,7 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 			action = "update_output"
 		}
 		s.audit(r, action, fmt.Sprintf("%s / %s lang=%s", streamerName, req.Name, req.TargetLang))
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		jsonOK(w, map[string]any{"ok": true})
 
 	case "DELETE":
 		outputName := r.URL.Query().Get("name")
@@ -1125,7 +1092,7 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		s.audit(r, "delete_output", fmt.Sprintf("%s / %s", streamerName, outputName))
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		jsonOK(w, map[string]any{"ok": true})
 		// Sync to controller
 		s.mu.RLock()
 		delRT := s.streamers[streamerName]
@@ -1147,23 +1114,9 @@ func (s *Server) handleMyAccounts(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"unauthorized"}`, 401)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
 
 	if u.IsAdmin {
-		// Admin: all accounts (same as all-accounts)
-		names := s.pool.Names()
-		if dbAccounts, err := s.store.ListBiliAccountSummaries(); err == nil {
-			seen := make(map[string]bool)
-			for _, n := range names {
-				seen[n] = true
-			}
-			for _, a := range dbAccounts {
-				if !seen[a.Name] {
-					names = append(names, a.Name)
-				}
-			}
-		}
-		json.NewEncoder(w).Encode(names)
+		jsonOK(w, s.allAccountNames())
 		return
 	}
 
@@ -1171,7 +1124,7 @@ func (s *Server) handleMyAccounts(w http.ResponseWriter, r *http.Request) {
 	if accts == nil {
 		accts = []string{}
 	}
-	json.NewEncoder(w).Encode(accts)
+	jsonOK(w, accts)
 }
 
 // handleMyStreamerOutputs lets authenticated users manage outputs for their assigned rooms.
@@ -1183,21 +1136,13 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
 	streamerName := r.URL.Query().Get("streamer")
 	if streamerName == "" {
 		http.Error(w, `{"error":"streamer name required"}`, 400)
 		return
 	}
 
-	var sc *config.StreamerConfig
-	for i := range s.cfg.Streamers {
-		if s.cfg.Streamers[i].Name == streamerName {
-			sc = &s.cfg.Streamers[i]
-			break
-		}
-	}
+	sc := s.cfg.FindStreamer(streamerName)
 	if sc == nil {
 		http.Error(w, `{"error":"streamer not found"}`, 404)
 		return
@@ -1231,7 +1176,7 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 
 	switch r.Method {
 	case "GET":
-		json.NewEncoder(w).Encode(sc.Outputs)
+		jsonOK(w, sc.Outputs)
 
 	case "POST", "PUT":
 		var req config.OutputConfig
@@ -1280,7 +1225,7 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 			action = "update_output"
 		}
 		s.audit(r, action, fmt.Sprintf("%s / %s lang=%s", streamerName, req.Name, req.TargetLang))
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		jsonOK(w, map[string]any{"ok": true})
 
 	case "DELETE":
 		outputName := r.URL.Query().Get("name")
@@ -1300,7 +1245,7 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		s.audit(r, "delete_output", fmt.Sprintf("%s / %s", streamerName, outputName))
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		jsonOK(w, map[string]any{"ok": true})
 		s.mu.RLock()
 		delRT := s.streamers[streamerName]
 		s.mu.RUnlock()
@@ -1329,8 +1274,7 @@ func (s *Server) handleAdminAudit(w http.ResponseWriter, r *http.Request) {
 	if entries == nil {
 		entries = []auth.AuditEntry{}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(entries)
+	jsonOK(w, entries)
 }
 
 func (s *Server) audit(r *http.Request, action, detail string) {
@@ -1364,6 +1308,12 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, adminHTML)
+}
+
+// jsonOK writes a 200 JSON response.
+func jsonOK(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(v)
 }
 
 // jsonError writes a JSON error response with proper escaping.

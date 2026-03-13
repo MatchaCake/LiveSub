@@ -347,17 +347,13 @@ func (s *Store) ListUserDetails() ([]UserDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	var details []UserDetail
+	details := make([]UserDetail, 0, len(users))
 	for _, u := range users {
-		rooms, _ := s.GetUserRooms(u.ID)
-		accounts, _ := s.GetUserAccounts(u.ID)
-		if rooms == nil {
-			rooms = []int64{}
+		d, err := s.GetUserDetail(u.ID)
+		if err != nil || d == nil {
+			continue
 		}
-		if accounts == nil {
-			accounts = []string{}
-		}
-		details = append(details, UserDetail{User: u, Rooms: rooms, Accounts: accounts})
+		details = append(details, *d)
 	}
 	return details, nil
 }
