@@ -25,10 +25,10 @@ import (
 
 // StreamerState tracks per-streamer state for the web UI.
 type StreamerState struct {
-	RoomID   int64                    `json:"room_id"`
-	Name     string                   `json:"name"`
-	Live     bool                     `json:"live"`
-	Outputs  []controller.OutputState `json:"outputs"`
+	RoomID  int64                    `json:"room_id"`
+	Name    string                   `json:"name"`
+	Live    bool                     `json:"live"`
+	Outputs []controller.OutputState `json:"outputs"`
 }
 
 // StatusResponse is the /api/status response.
@@ -44,17 +44,23 @@ type streamerRuntime struct {
 	paused map[string]bool // output name → paused (persists across streams)
 }
 
+type controllerSync struct {
+	ctrl    *controller.Controller
+	outputs []config.OutputConfig
+	paused  map[string]bool
+}
+
 // Server serves the control panel with SQLite-based authentication
 type Server struct {
-	pool            *bot.Pool
-	port            int
-	store           *auth.Store
-	cfg             *config.Config
-	cfgPath         string
-	sessions        sync.Map // token → *auth.Session
+	pool             *bot.Pool
+	port             int
+	store            *auth.Store
+	cfg              *config.Config
+	cfgPath          string
+	sessions         sync.Map // token → *auth.Session
 	onAccountChange  func()
 	onStreamerChange func()
-	transcriptDir   string
+	transcriptDir    string
 
 	mu        sync.RWMutex
 	streamers map[string]*streamerRuntime // streamer name → runtime state
@@ -87,16 +93,7 @@ func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string
 			slog.Info("restored sessions", "count", len(saved))
 		}
 	}
-	// Init runtime state — outputs with auto_start enabled start unpaused
-	for _, sc := range cfg.Streamers {
-		p := make(map[string]bool)
-		for _, o := range sc.Outputs {
-			p[o.Name] = !o.AutoStart
-		}
-		s.streamers[sc.Name] = &streamerRuntime{
-			paused: p,
-		}
-	}
+	s.syncRuntimesLocked(cfg)
 	return s
 }
 
@@ -108,18 +105,12 @@ func (s *Server) OnAccountChange(fn func()) {
 // UpdateConfig replaces the server's config pointer (called on hot reload).
 func (s *Server) UpdateConfig(cfg *config.Config) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.cfg = cfg
-	// Init runtime for any new streamers
-	for _, sc := range cfg.Streamers {
-		if _, ok := s.streamers[sc.Name]; !ok {
-			p := make(map[string]bool)
-			for _, o := range sc.Outputs {
-				p[o.Name] = true // new outputs default paused
-			}
-			s.streamers[sc.Name] = &streamerRuntime{paused: p}
-		}
-	}
+	syncs := s.syncRuntimesLocked(cfg)
+	s.mu.Unlock()
+
+	applyControllerSyncs(syncs)
+	s.BroadcastStatus()
 }
 
 // OnStreamerChange registers a callback when streamer config changes.
@@ -130,7 +121,6 @@ func (s *Server) OnStreamerChange(fn func()) {
 // SetController sets the active controller for a streamer.
 func (s *Server) SetController(streamerName string, ctrl *controller.Controller) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	rt := s.getOrCreateRuntime(streamerName)
 	rt.ctrl = ctrl
 	if ctrl != nil {
@@ -138,13 +128,14 @@ func (s *Server) SetController(streamerName string, ctrl *controller.Controller)
 			ctrl.SetPaused(name, paused)
 		}
 	}
+	s.mu.Unlock()
+	s.BroadcastStatus()
 }
 
 // SetLive updates live status for a streamer.
 // When going live, auto_start outputs are unpaused for the new session.
 func (s *Server) SetLive(streamerName string, live bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	rt := s.getOrCreateRuntime(streamerName)
 	rt.live = live
 
@@ -164,6 +155,8 @@ func (s *Server) SetLive(streamerName string, live bool) {
 			}
 		}
 	}
+	s.mu.Unlock()
+	s.BroadcastStatus()
 }
 
 // allAccountNames merges pool bot names with DB account names (deduped).
@@ -208,6 +201,66 @@ func (s *Server) getOrCreateRuntime(name string) *streamerRuntime {
 	return rt
 }
 
+func (s *Server) syncRuntimesLocked(cfg *config.Config) []controllerSync {
+	next := make(map[string]*streamerRuntime, len(cfg.Streamers))
+	syncs := make([]controllerSync, 0, len(cfg.Streamers))
+
+	for _, sc := range cfg.Streamers {
+		rt, ok := s.streamers[sc.Name]
+		if !ok {
+			rt = &streamerRuntime{}
+		}
+		rt.paused = syncPausedOutputs(rt.paused, sc.Outputs)
+		next[sc.Name] = rt
+
+		if rt.ctrl != nil {
+			syncs = append(syncs, controllerSync{
+				ctrl:    rt.ctrl,
+				outputs: copyOutputs(sc.Outputs),
+				paused:  copyPaused(rt.paused),
+			})
+		}
+	}
+
+	s.streamers = next
+	return syncs
+}
+
+func syncPausedOutputs(existing map[string]bool, outputs []config.OutputConfig) map[string]bool {
+	paused := make(map[string]bool, len(outputs))
+	for _, o := range outputs {
+		if existing != nil {
+			if v, ok := existing[o.Name]; ok {
+				paused[o.Name] = v
+				continue
+			}
+		}
+		paused[o.Name] = !o.AutoStart
+	}
+	return paused
+}
+
+func copyOutputs(outputs []config.OutputConfig) []config.OutputConfig {
+	return append([]config.OutputConfig(nil), outputs...)
+}
+
+func copyPaused(paused map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(paused))
+	for name, state := range paused {
+		out[name] = state
+	}
+	return out
+}
+
+func applyControllerSyncs(syncs []controllerSync) {
+	for _, sync := range syncs {
+		sync.ctrl.SyncOutputs(sync.outputs)
+		for name, paused := range sync.paused {
+			sync.ctrl.SetPaused(name, paused)
+		}
+	}
+}
+
 func (s *Server) Start() {
 	go s.runWSBroadcast()
 	mux := http.NewServeMux()
@@ -220,7 +273,7 @@ func (s *Server) Start() {
 	// Authenticated
 	mux.HandleFunc("/", s.requireAuth(s.handleIndex))
 	mux.HandleFunc("/api/status", s.requireAuth(s.handleStatus))
-	mux.HandleFunc("/ws/status", s.handleWS)
+	mux.HandleFunc("/ws/status", s.requireAuth(s.handleWS))
 	mux.HandleFunc("/api/toggle", s.requireAuth(s.handleToggle))
 	mux.HandleFunc("/api/toggle-seq", s.requireAuth(s.handleToggleSeq))
 	mux.HandleFunc("/api/toggle-autostart", s.requireAuth(s.handleToggleAutoStart))
@@ -233,7 +286,7 @@ func (s *Server) Start() {
 	// /settings removed — merged into /admin
 
 	// Admin only
-	mux.HandleFunc("/admin", s.requireAuth(s.handleAdminPage))
+	mux.HandleFunc("/admin", s.requireAdmin(s.handleAdminPage))
 	mux.HandleFunc("/api/admin/users", s.requireAdmin(s.handleAdminUsers))
 	mux.HandleFunc("/api/admin/user", s.requireAdmin(s.handleAdminUser))
 	mux.HandleFunc("/api/admin/all-accounts", s.requireAdmin(s.handleAdminAllAccounts))
@@ -286,6 +339,56 @@ func (s *Server) getUser(r *http.Request) *auth.User {
 		return nil
 	}
 	u, _ := s.store.GetUser(sess.UserID)
+	return u
+}
+
+func (s *Server) streamerRoomID(streamerName string) (int64, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, sc := range s.cfg.Streamers {
+		if sc.Name == streamerName {
+			return sc.RoomID, true
+		}
+	}
+	return 0, false
+}
+
+func (s *Server) canAccessStreamer(u *auth.User, streamerName string) bool {
+	if u == nil {
+		return false
+	}
+	if u.IsAdmin {
+		return true
+	}
+
+	roomID, ok := s.streamerRoomID(streamerName)
+	if !ok {
+		return false
+	}
+
+	rooms, err := s.store.GetUserRooms(u.ID)
+	if err != nil {
+		return false
+	}
+	for _, rid := range rooms {
+		if rid == roomID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) requireStreamerAccess(w http.ResponseWriter, r *http.Request, streamerName string) *auth.User {
+	u := s.getUser(r)
+	if u == nil {
+		http.Error(w, `{"error":"unauthorized"}`, 401)
+		return nil
+	}
+	if !s.canAccessStreamer(u, streamerName) {
+		http.Error(w, `{"error":"forbidden"}`, 403)
+		return nil
+	}
 	return u
 }
 
@@ -441,11 +544,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	var userRooms map[int64]bool
 	if !u.IsAdmin {
 		rooms, _ := s.store.GetUserRooms(u.ID)
-		if len(rooms) > 0 {
-			userRooms = make(map[int64]bool)
-			for _, rid := range rooms {
-				userRooms[rid] = true
-			}
+		userRooms = make(map[int64]bool, len(rooms))
+		for _, rid := range rooms {
+			userRooms[rid] = true
 		}
 	}
 
@@ -460,16 +561,14 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
-	u := s.getUser(r)
-	if u == nil {
-		http.Error(w, `{"error":"unauthorized"}`, 401)
-		return
-	}
-
 	streamerName := r.URL.Query().Get("streamer")
 	outputName := r.URL.Query().Get("output")
 	if streamerName == "" || outputName == "" {
 		http.Error(w, `{"error":"streamer and output name required"}`, 400)
+		return
+	}
+	u := s.requireStreamerAccess(w, r, streamerName)
+	if u == nil {
 		return
 	}
 
@@ -488,6 +587,7 @@ func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request) {
 	} else {
 		s.audit(r, "恢复翻译", fmt.Sprintf("%s / %s", streamerName, outputName))
 	}
+	s.BroadcastStatus()
 	slog.Info("output toggled", "streamer", streamerName, "output", outputName, "paused", paused, "user", u.Username)
 	jsonOK(w, map[string]any{"streamer": streamerName, "output": outputName, "paused": paused})
 }
@@ -513,6 +613,13 @@ func (s *Server) toggleOutputBool(w http.ResponseWriter, r *http.Request, fieldN
 ) {
 	streamerName := r.URL.Query().Get("streamer")
 	outputName := r.URL.Query().Get("output")
+	if streamerName == "" || outputName == "" {
+		http.Error(w, `{"error":"streamer and output name required"}`, 400)
+		return
+	}
+	if s.requireStreamerAccess(w, r, streamerName) == nil {
+		return
+	}
 
 	s.mu.Lock()
 	o := s.findOutput(streamerName, outputName)
@@ -525,12 +632,17 @@ func (s *Server) toggleOutputBool(w http.ResponseWriter, r *http.Request, fieldN
 	*field = !*field
 	newVal := *field
 	rt := s.streamers[streamerName]
+	if err := config.Save(s.cfgPath, s.cfg); err != nil {
+		s.mu.Unlock()
+		http.Error(w, `{"error":"save failed"}`, 500)
+		return
+	}
 	s.mu.Unlock()
 
 	if rt != nil && rt.ctrl != nil {
 		syncCtrl(rt.ctrl, outputName, newVal)
 	}
-	config.Save(s.cfgPath, s.cfg)
+	s.BroadcastStatus()
 	jsonOK(w, map[string]any{"ok": true, fieldName: newVal})
 }
 
@@ -609,7 +721,18 @@ func (s *Server) doBroadcast() {
 func (s *Server) handleSkip(w http.ResponseWriter, r *http.Request) {
 	streamerName := r.URL.Query().Get("streamer")
 	msgIDStr := r.URL.Query().Get("id")
-	msgID, _ := strconv.ParseInt(msgIDStr, 10, 64)
+	if streamerName == "" {
+		http.Error(w, `{"error":"streamer required"}`, 400)
+		return
+	}
+	if s.requireStreamerAccess(w, r, streamerName) == nil {
+		return
+	}
+	msgID, err := strconv.ParseInt(msgIDStr, 10, 64)
+	if err != nil {
+		http.Error(w, `{"error":"invalid id"}`, 400)
+		return
+	}
 
 	s.mu.RLock()
 	rt, ok := s.streamers[streamerName]
@@ -623,6 +746,7 @@ func (s *Server) handleSkip(w http.ResponseWriter, r *http.Request) {
 		ctrl.SkipPending(msgID)
 	}
 
+	s.BroadcastStatus()
 	jsonOK(w, map[string]any{"ok": true, "skipped": msgID})
 }
 
@@ -759,24 +883,22 @@ func (s *Server) handleTranscripts(w http.ResponseWriter, r *http.Request) {
 	// Non-admin: filter to assigned rooms only
 	if !u.IsAdmin {
 		rooms, _ := s.store.GetUserRooms(u.ID)
-		if len(rooms) > 0 {
-			roomSet := make(map[string]bool)
-			for _, rid := range rooms {
-				roomSet[fmt.Sprintf("%d_", rid)] = true
-			}
-			var filtered []transcript.FileInfo
-			for _, f := range files {
-				for prefix := range roomSet {
-					if len(f.Name) > len(prefix) && f.Name[:len(prefix)] == prefix {
-						filtered = append(filtered, f)
-						break
-					}
+		roomSet := make(map[string]bool, len(rooms))
+		for _, rid := range rooms {
+			roomSet[fmt.Sprintf("%d_", rid)] = true
+		}
+		var filtered []transcript.FileInfo
+		for _, f := range files {
+			for prefix := range roomSet {
+				if len(f.Name) > len(prefix) && f.Name[:len(prefix)] == prefix {
+					filtered = append(filtered, f)
+					break
 				}
 			}
-			files = filtered
-			if files == nil {
-				files = []transcript.FileInfo{}
-			}
+		}
+		files = filtered
+		if files == nil {
+			files = []transcript.FileInfo{}
 		}
 	}
 
@@ -934,7 +1056,10 @@ func (s *Server) notifyAccountChange() {
 func (s *Server) handleAdminStreamers(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
-		jsonOK(w, s.cfg.Streamers)
+		s.mu.RLock()
+		streamers := append([]config.StreamerConfig(nil), s.cfg.Streamers...)
+		s.mu.RUnlock()
+		jsonOK(w, streamers)
 
 	case "POST":
 		var req config.StreamerConfig
@@ -952,6 +1077,8 @@ func (s *Server) handleAdminStreamers(w http.ResponseWriter, r *http.Request) {
 		if req.Outputs == nil {
 			req.Outputs = []config.OutputConfig{}
 		}
+
+		s.mu.Lock()
 		// Update existing or add new
 		found := false
 		for i, sc := range s.cfg.Streamers {
@@ -965,12 +1092,15 @@ func (s *Server) handleAdminStreamers(w http.ResponseWriter, r *http.Request) {
 			s.cfg.Streamers = append(s.cfg.Streamers, req)
 		}
 		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			s.mu.Unlock()
 			http.Error(w, `{"error":"save failed"}`, 500)
 			return
 		}
-		s.mu.Lock()
-		s.getOrCreateRuntime(req.Name)
+		syncs := s.syncRuntimesLocked(s.cfg)
 		s.mu.Unlock()
+
+		applyControllerSyncs(syncs)
+		s.BroadcastStatus()
 		action := "add_streamer"
 		if found {
 			action = "update_streamer"
@@ -988,6 +1118,7 @@ func (s *Server) handleAdminStreamers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		newStreamers := make([]config.StreamerConfig, 0)
+		s.mu.Lock()
 		for _, sc := range s.cfg.Streamers {
 			if sc.Name != name {
 				newStreamers = append(newStreamers, sc)
@@ -995,12 +1126,13 @@ func (s *Server) handleAdminStreamers(w http.ResponseWriter, r *http.Request) {
 		}
 		s.cfg.Streamers = newStreamers
 		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			s.mu.Unlock()
 			http.Error(w, `{"error":"save failed"}`, 500)
 			return
 		}
-		s.mu.Lock()
-		delete(s.streamers, name)
+		s.syncRuntimesLocked(s.cfg)
 		s.mu.Unlock()
+		s.BroadcastStatus()
 		s.audit(r, "delete_streamer", name)
 		if s.onStreamerChange != nil {
 			go s.onStreamerChange()
@@ -1020,15 +1152,18 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	sc := s.cfg.FindStreamer(streamerName)
-	if sc == nil {
-		http.Error(w, `{"error":"streamer not found"}`, 404)
-		return
-	}
-
 	switch r.Method {
 	case "GET":
-		jsonOK(w, sc.Outputs)
+		s.mu.RLock()
+		sc := s.cfg.FindStreamer(streamerName)
+		if sc == nil {
+			s.mu.RUnlock()
+			http.Error(w, `{"error":"streamer not found"}`, 404)
+			return
+		}
+		outputs := copyOutputs(sc.Outputs)
+		s.mu.RUnlock()
+		jsonOK(w, outputs)
 
 	case "POST", "PUT":
 		var req config.OutputConfig
@@ -1043,6 +1178,13 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 		if req.Platform == "" {
 			req.Platform = "bilibili"
 		}
+		s.mu.Lock()
+		sc := s.cfg.FindStreamer(streamerName)
+		if sc == nil {
+			s.mu.Unlock()
+			http.Error(w, `{"error":"streamer not found"}`, 404)
+			return
+		}
 		found := false
 		for i, o := range sc.Outputs {
 			if o.Name == req.Name {
@@ -1055,18 +1197,15 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 			sc.Outputs = append(sc.Outputs, req)
 		}
 		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			s.mu.Unlock()
 			http.Error(w, `{"error":"save failed"}`, 500)
 			return
 		}
-		// Sync full output list to controller
-		s.mu.Lock()
-		rt := s.getOrCreateRuntime(streamerName)
-		rt.paused[req.Name] = true
-		ctrl := rt.ctrl
+		syncs := s.syncRuntimesLocked(s.cfg)
 		s.mu.Unlock()
-		if ctrl != nil {
-			ctrl.SyncOutputs(sc.Outputs)
-		}
+
+		applyControllerSyncs(syncs)
+		s.BroadcastStatus()
 		action := "add_output"
 		if found {
 			action = "update_output"
@@ -1080,6 +1219,13 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 			http.Error(w, `{"error":"output name required"}`, 400)
 			return
 		}
+		s.mu.Lock()
+		sc := s.cfg.FindStreamer(streamerName)
+		if sc == nil {
+			s.mu.Unlock()
+			http.Error(w, `{"error":"streamer not found"}`, 404)
+			return
+		}
 		newOutputs := make([]config.OutputConfig, 0)
 		for _, o := range sc.Outputs {
 			if o.Name != outputName {
@@ -1088,18 +1234,17 @@ func (s *Server) handleAdminStreamerOutputs(w http.ResponseWriter, r *http.Reque
 		}
 		sc.Outputs = newOutputs
 		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			s.mu.Unlock()
 			http.Error(w, `{"error":"save failed"}`, 500)
 			return
 		}
+		syncs := s.syncRuntimesLocked(s.cfg)
+		s.mu.Unlock()
+
+		applyControllerSyncs(syncs)
+		s.BroadcastStatus()
 		s.audit(r, "delete_output", fmt.Sprintf("%s / %s", streamerName, outputName))
 		jsonOK(w, map[string]any{"ok": true})
-		// Sync to controller
-		s.mu.RLock()
-		delRT := s.streamers[streamerName]
-		s.mu.RUnlock()
-		if delRT != nil && delRT.ctrl != nil {
-			delRT.ctrl.SyncOutputs(sc.Outputs)
-		}
 
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, 405)
@@ -1141,27 +1286,9 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 		http.Error(w, `{"error":"streamer name required"}`, 400)
 		return
 	}
-
-	sc := s.cfg.FindStreamer(streamerName)
-	if sc == nil {
-		http.Error(w, `{"error":"streamer not found"}`, 404)
+	if !s.canAccessStreamer(u, streamerName) {
+		http.Error(w, `{"error":"forbidden"}`, 403)
 		return
-	}
-
-	// Check permission: admin or assigned room
-	if !u.IsAdmin {
-		rooms, _ := s.store.GetUserRooms(u.ID)
-		allowed := false
-		for _, rid := range rooms {
-			if rid == sc.RoomID {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			http.Error(w, `{"error":"forbidden"}`, 403)
-			return
-		}
 	}
 
 	// Filter available accounts for non-admin
@@ -1176,7 +1303,16 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 
 	switch r.Method {
 	case "GET":
-		jsonOK(w, sc.Outputs)
+		s.mu.RLock()
+		sc := s.cfg.FindStreamer(streamerName)
+		if sc == nil {
+			s.mu.RUnlock()
+			http.Error(w, `{"error":"streamer not found"}`, 404)
+			return
+		}
+		outputs := copyOutputs(sc.Outputs)
+		s.mu.RUnlock()
+		jsonOK(w, outputs)
 
 	case "POST", "PUT":
 		var req config.OutputConfig
@@ -1196,6 +1332,13 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 			http.Error(w, `{"error":"account not assigned to you"}`, 403)
 			return
 		}
+		s.mu.Lock()
+		sc := s.cfg.FindStreamer(streamerName)
+		if sc == nil {
+			s.mu.Unlock()
+			http.Error(w, `{"error":"streamer not found"}`, 404)
+			return
+		}
 		found := false
 		for i, o := range sc.Outputs {
 			if o.Name == req.Name {
@@ -1208,18 +1351,15 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 			sc.Outputs = append(sc.Outputs, req)
 		}
 		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			s.mu.Unlock()
 			http.Error(w, `{"error":"save failed"}`, 500)
 			return
 		}
-		// Sync full output list to controller
-		s.mu.Lock()
-		rt := s.getOrCreateRuntime(streamerName)
-		rt.paused[req.Name] = true
-		ctrl := rt.ctrl
+		syncs := s.syncRuntimesLocked(s.cfg)
 		s.mu.Unlock()
-		if ctrl != nil {
-			ctrl.SyncOutputs(sc.Outputs)
-		}
+
+		applyControllerSyncs(syncs)
+		s.BroadcastStatus()
 		action := "add_output"
 		if found {
 			action = "update_output"
@@ -1233,6 +1373,13 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 			http.Error(w, `{"error":"output name required"}`, 400)
 			return
 		}
+		s.mu.Lock()
+		sc := s.cfg.FindStreamer(streamerName)
+		if sc == nil {
+			s.mu.Unlock()
+			http.Error(w, `{"error":"streamer not found"}`, 404)
+			return
+		}
 		newOutputs := make([]config.OutputConfig, 0)
 		for _, o := range sc.Outputs {
 			if o.Name != outputName {
@@ -1241,17 +1388,17 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 		}
 		sc.Outputs = newOutputs
 		if err := config.Save(s.cfgPath, s.cfg); err != nil {
+			s.mu.Unlock()
 			http.Error(w, `{"error":"save failed"}`, 500)
 			return
 		}
+		syncs := s.syncRuntimesLocked(s.cfg)
+		s.mu.Unlock()
+
+		applyControllerSyncs(syncs)
+		s.BroadcastStatus()
 		s.audit(r, "delete_output", fmt.Sprintf("%s / %s", streamerName, outputName))
 		jsonOK(w, map[string]any{"ok": true})
-		s.mu.RLock()
-		delRT := s.streamers[streamerName]
-		s.mu.RUnlock()
-		if delRT != nil && delRT.ctrl != nil {
-			delRT.ctrl.SyncOutputs(sc.Outputs)
-		}
 
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, 405)

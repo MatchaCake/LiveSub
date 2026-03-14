@@ -4,8 +4,8 @@ go 1.25.7
 
 require (
 	cloud.google.com/go/speech v1.29.0
-	github.com/MatchaCake/bilibili_dm_lib v0.0.0-20260219074458-c748d22bca52
-	github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260219143405-1f99bdc94371
+	github.com/MatchaCake/bilibili_dm_lib v0.0.0-20260314080746-e5092f1990ab
+	github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260314080746-ede9ae006f0f
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/mattn/go-sqlite3 v1.14.34

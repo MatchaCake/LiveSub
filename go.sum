@@ -28,12 +28,16 @@ github.com/MatchaCake/bilibili_dm_lib v0.0.0-20260219073354-a9e9a634dc3c h1:13k1
 github.com/MatchaCake/bilibili_dm_lib v0.0.0-20260219073354-a9e9a634dc3c/go.mod h1:FUm6JkPdpqrKzkdtQLdWBtP7KbChXiRK623xMsyLN2Q=
 github.com/MatchaCake/bilibili_dm_lib v0.0.0-20260219074458-c748d22bca52 h1:B3OBFlz0H5n0CLVamVsK3ZHGr5GIjuBTU6zYjdwJvSM=
 github.com/MatchaCake/bilibili_dm_lib v0.0.0-20260219074458-c748d22bca52/go.mod h1:FUm6JkPdpqrKzkdtQLdWBtP7KbChXiRK623xMsyLN2Q=
+github.com/MatchaCake/bilibili_dm_lib v0.0.0-20260314080746-e5092f1990ab h1:dTamEUuxOGzcfUEfn36rrsVCPYUe7pV0WGdJuiC95BA=
+github.com/MatchaCake/bilibili_dm_lib v0.0.0-20260314080746-e5092f1990ab/go.mod h1:FUm6JkPdpqrKzkdtQLdWBtP7KbChXiRK623xMsyLN2Q=
 github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260218071828-2870d58ad21c h1:fo8tHg5rQiaJFyv5IByQCRpREWuB//WQHajHsV5Fqi8=
 github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260218071828-2870d58ad21c/go.mod h1:M7MuQpeXbRJ50F4HqIpMDnBgVaRSjrnN8zPgscx25Zk=
 github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260219060336-c3a154b0491b h1:JVxjDpVtOADMa4ay57HJbLuS6QwYK7G7grtJhpbgo70=
 github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260219060336-c3a154b0491b/go.mod h1:M7MuQpeXbRJ50F4HqIpMDnBgVaRSjrnN8zPgscx25Zk=
 github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260219143405-1f99bdc94371 h1:VPDawNI8KRkcWY2ltRIIzAO+kq/eZHmGUZEJmpznkbw=
 github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260219143405-1f99bdc94371/go.mod h1:M7MuQpeXbRJ50F4HqIpMDnBgVaRSjrnN8zPgscx25Zk=
+github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260314080746-ede9ae006f0f h1:V6W5biAppV8Ls4iXGKIzJJjMExUZZ5UfYoN5e124ZNc=
+github.com/MatchaCake/bilibili_stream_lib v0.0.0-20260314080746-ede9ae006f0f/go.mod h1:M7MuQpeXbRJ50F4HqIpMDnBgVaRSjrnN8zPgscx25Zk=
 github.com/andybalholm/brotli v1.2.0 h1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=
 github.com/andybalholm/brotli v1.2.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443 h1:aQ3y1lwWyqYPiWZThqv1aFbZMiM9vblcSArJRf2Irls=
