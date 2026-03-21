@@ -22,3 +22,4 @@ configs/users.db-wal
 configs/transcripts/
 logs/
 *.bak
+build/
