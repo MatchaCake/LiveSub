@@ -45,9 +45,16 @@ func (a *Agent) Run(ctx context.Context) error {
 			return ctx.Err()
 		}
 
+		pipelineStart := time.Now()
 		err := a.runPipeline(ctx)
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+
+		// A pipeline that ran for a while was healthy — restart quickly instead
+		// of inheriting backoff escalated by long-past failures.
+		if time.Since(pipelineStart) > time.Minute {
+			backoff = time.Second
 		}
 
 		if err != nil {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -44,6 +45,11 @@ func main() {
 			cfgPath = os.Args[2]
 		}
 		if err := run(cfgPath); err != nil {
+			if errors.Is(err, context.Canceled) {
+				// Graceful shutdown (SIGTERM) — not a failure; exit 0 so
+				// systemd doesn't record every stop as 'Failed'.
+				return
+			}
 			slog.Error("run failed", "err", err)
 			os.Exit(1)
 		}
