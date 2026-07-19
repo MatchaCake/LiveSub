@@ -65,6 +65,7 @@ type Controller struct {
 	rrIndex    map[string]int // output name → round-robin index for account pool
 	ch         chan Translation
 	done       chan struct{}
+	stopOnce   sync.Once
 	wg         sync.WaitGroup
 }
 
@@ -145,13 +146,19 @@ func (c *Controller) Start(ctx context.Context) {
 }
 
 // Submit sends a translation to the controller for routing.
+// Safe to call concurrently with Stop: drops the message once shut down rather
+// than panicking on a closed channel (in-flight translations race with Stop on
+// every stream teardown).
 func (c *Controller) Submit(t Translation) {
-	c.ch <- t
+	select {
+	case c.ch <- t:
+	case <-c.done:
+	}
 }
 
-// Stop gracefully shuts down the controller.
+// Stop gracefully shuts down the controller. Idempotent.
 func (c *Controller) Stop() {
-	close(c.ch)
+	c.stopOnce.Do(func() { close(c.done) })
 	c.wg.Wait()
 }
 
@@ -331,12 +338,11 @@ func (c *Controller) run(ctx context.Context) {
 
 	for {
 		select {
-		case t, ok := <-c.ch:
-			if !ok {
-				// Channel closed — flush remaining
-				c.flushDelayQueue(ctx, delayQueue)
-				return
-			}
+		case <-c.done:
+			// Stop() called — flush remaining and exit.
+			c.flushDelayQueue(ctx, delayQueue)
+			return
+		case t := <-c.ch:
 			// Snapshot outputs under lock (SyncOutputs may replace the slice concurrently)
 			c.mu.RLock()
 			outputs := c.outputs
@@ -390,7 +396,10 @@ func (c *Controller) run(ctx context.Context) {
 				// Buffer for ordered sending (lazily init for outputs added via SyncOutputs)
 				s := senders[o.Name]
 				if s == nil {
-					s = &outputSender{pending: make(map[int]string)}
+					// Start ordering from the first seq this output sees — upstream
+					// seq is already high, so nextSeq=0 would wait forever and grow
+					// pending unbounded.
+					s = &outputSender{nextSeq: t.Seq, pending: make(map[int]string)}
 					senders[o.Name] = s
 				}
 				s.pending[t.Seq] = text

@@ -2,7 +2,9 @@ package config
 
 import (
 	"log/slog"
+	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -58,16 +60,34 @@ func (hc *HotConfig) Watch() {
 		return
 	}
 
+	// Watch the containing directory, not the file itself: editors and
+	// deployment scripts save via write-temp + rename, which removes the inode
+	// and permanently breaks a file-level watch. Filter events by basename.
+	dir := filepath.Dir(hc.path)
+	base := filepath.Base(hc.path)
+
 	go func() {
 		defer watcher.Close()
+		var debounce *time.Timer
+		fire := func() {
+			if debounce != nil {
+				debounce.Stop()
+			}
+			// Coalesce the burst of events a single save produces.
+			debounce = time.AfterFunc(200*time.Millisecond, hc.reload)
+		}
 		for {
 			select {
 			case event, ok := <-watcher.Events:
 				if !ok {
 					return
 				}
-				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
-					hc.reload()
+				if filepath.Base(event.Name) != base {
+					continue
+				}
+				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) ||
+					event.Has(fsnotify.Rename) || event.Has(fsnotify.Remove) {
+					fire()
 				}
 			case err, ok := <-watcher.Errors:
 				if !ok {
@@ -78,7 +98,7 @@ func (hc *HotConfig) Watch() {
 		}
 	}()
 
-	if err := watcher.Add(hc.path); err != nil {
-		slog.Error("watch config file failed", "path", hc.path, "err", err)
+	if err := watcher.Add(dir); err != nil {
+		slog.Error("watch config dir failed", "path", dir, "err", err)
 	}
 }

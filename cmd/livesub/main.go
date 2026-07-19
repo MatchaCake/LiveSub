@@ -332,15 +332,23 @@ func run(cfgPath string) error {
 					}
 
 					ctrl.Stop()
-					webServer.SetController(sc.Name, nil)
-					if ch, ok := cmdHandlers[sc.RoomID]; ok {
-						ch.SetController(nil)
-					}
 					streamCancel()
 
+					// Only tear down shared state if it still belongs to THIS
+					// pipeline. On off→on flapping, a newer pipeline may already
+					// own active[room]/the web+command controllers; clobbering them
+					// would leak the new pipeline (unstoppable) and double-send.
 					mu.Lock()
-					delete(active, sc.RoomID)
-					mu.Unlock()
+					if as, ok := active[sc.RoomID]; ok && as.ctrl == ctrl {
+						delete(active, sc.RoomID)
+						mu.Unlock()
+						webServer.SetController(sc.Name, nil)
+						if ch, ok := cmdHandlers[sc.RoomID]; ok {
+							ch.SetController(nil)
+						}
+					} else {
+						mu.Unlock()
+					}
 				}(streamerCfg)
 			} else {
 				if as, ok := active[ev.RoomID]; ok {

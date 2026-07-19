@@ -184,14 +184,34 @@ func migrateOldFormat(data []byte) *StreamerConfig {
 	}
 }
 
-// Save writes the config back to the given path.
+// Save writes the config back to the given path atomically (temp file + rename)
+// so a crash mid-write can't truncate the live config, and a concurrent watcher
+// can't read a half-written file. Mode 0600 — the file holds plaintext SESSDATA,
+// bili_jct, API keys and the web password.
 func Save(path string, cfg *Config) error {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		return fmt.Errorf("write config: %w", err)
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp config: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op after a successful rename
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("chmod temp config: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temp config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp config: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("rename config: %w", err)
 	}
 	return nil
 }

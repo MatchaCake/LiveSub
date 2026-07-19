@@ -709,6 +709,10 @@ func (s *Server) doBroadcast() {
 
 	data, _ := json.Marshal(StatusResponse{Streamers: streamers, BotNames: s.pool.Names()})
 	for _, c := range conns {
+		// Bound the write: without a deadline, a single stalled client (full TCP
+		// buffer, half-open connection) blocks this sole broadcast goroutine
+		// forever and freezes all WS pushes.
+		_ = c.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
 			s.wsMu.Lock()
 			delete(s.wsConns, c)
@@ -840,7 +844,11 @@ func (s *Server) handleAdminUser(w http.ResponseWriter, r *http.Request) {
 				slog.Error("set user accounts", "user", id, "err", err)
 			}
 		}
-		detail, _ := s.store.GetUserDetail(id)
+		detail, err := s.store.GetUserDetail(id)
+		if err != nil || detail == nil {
+			jsonError(w, "user not found", 404)
+			return
+		}
 		s.audit(r, "编辑用户", fmt.Sprintf("ID=%d %s", id, detail.Username))
 		jsonOK(w, detail)
 
@@ -1327,10 +1335,20 @@ func (s *Server) handleMyStreamerOutputs(w http.ResponseWriter, r *http.Request)
 		if req.Platform == "" {
 			req.Platform = "bilibili"
 		}
-		// Non-admin can only use their assigned accounts
-		if allowedAccounts != nil && req.Account != "" && !allowedAccounts[req.Account] {
-			http.Error(w, `{"error":"account not assigned to you"}`, 403)
-			return
+		// Non-admin can only use their assigned accounts. Check BOTH the single
+		// Account field AND the Accounts pool (AccountPool() uses the pool),
+		// otherwise a raw API call with {"accounts":[...]} bypasses the check.
+		if allowedAccounts != nil {
+			if req.Account != "" && !allowedAccounts[req.Account] {
+				http.Error(w, `{"error":"account not assigned to you"}`, 403)
+				return
+			}
+			for _, a := range req.Accounts {
+				if a != "" && !allowedAccounts[a] {
+					http.Error(w, `{"error":"account not assigned to you"}`, 403)
+					return
+				}
+			}
 		}
 		s.mu.Lock()
 		sc := s.cfg.FindStreamer(streamerName)
