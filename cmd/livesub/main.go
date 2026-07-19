@@ -169,44 +169,79 @@ func run(cfgPath string) error {
 	// Register callbacks
 	webServer.OnAccountChange(syncDBBots)
 
-	// Start danmaku command handlers for streamers with command_uids
-	cmdHandlers := make(map[int64]*command.Handler) // roomID → handler
-	for _, sc := range cfg.Streamers {
+	// Danmaku command handlers for streamers with command_uids.
+	// Guarded by mu (mutated on hot reload as streamers are added/removed).
+	type cmdEntry struct {
+		handler *command.Handler
+		cancel  context.CancelFunc
+	}
+	cmdHandlers := make(map[int64]*cmdEntry) // roomID → handler + its cancel
+
+	// getCmdHandler safely fetches a handler for the monitor goroutine.
+	getCmdHandler := func(roomID int64) *command.Handler {
+		mu.Lock()
+		defer mu.Unlock()
+		if e, ok := cmdHandlers[roomID]; ok {
+			return e.handler
+		}
+		return nil
+	}
+
+	// startCmdHandler creates and starts a danmaku command handler for sc.
+	// Caller must hold mu. No-op if one already exists for the room.
+	startCmdHandler := func(sc config.StreamerConfig) {
 		if len(sc.CommandUIDs) == 0 || sc.RoomID == 0 {
-			continue
+			return
+		}
+		if _, exists := cmdHandlers[sc.RoomID]; exists {
+			return
 		}
 		// Use 佯攻菲娜 for danmaku listening; fall back to any available bot
 		var dmClient *dm.Client
 		if bb, ok := pool.Get("佯攻菲娜").(*bot.BilibiliBot); ok && bb.Available() {
-			dmClient = dm.NewClient(
-				dm.WithCookie(bb.SESSDATA(), bb.BiliJCT()),
-				dm.WithRoomID(sc.RoomID),
-			)
+			dmClient = dm.NewClient(dm.WithCookie(bb.SESSDATA(), bb.BiliJCT()), dm.WithRoomID(sc.RoomID))
 		} else {
 			for _, b := range pool.All() {
 				if bb, ok := b.(*bot.BilibiliBot); ok && bb.Available() {
-					dmClient = dm.NewClient(
-						dm.WithCookie(bb.SESSDATA(), bb.BiliJCT()),
-						dm.WithRoomID(sc.RoomID),
-					)
+					dmClient = dm.NewClient(dm.WithCookie(bb.SESSDATA(), bb.BiliJCT()), dm.WithRoomID(sc.RoomID))
 					break
 				}
 			}
 		}
 		if dmClient == nil {
 			slog.Warn("no bot available for command handler", "room", sc.RoomID)
-			continue
+			return
 		}
+		hctx, hcancel := context.WithCancel(ctx)
 		h := command.New(sc.RoomID, sc.CommandUIDs, dmClient, command.WithPool(pool))
-		cmdHandlers[sc.RoomID] = h
+		// Reconnect an already-live streamer's controller to the new handler.
+		if as, ok := active[sc.RoomID]; ok && as.ctrl != nil {
+			h.SetController(as.ctrl)
+		}
+		cmdHandlers[sc.RoomID] = &cmdEntry{handler: h, cancel: hcancel}
 		go func(roomID int64, client *dm.Client, handler *command.Handler) {
-			// Start client (blocks until ctx cancel) and handler in parallel
-			go handler.Run(ctx)
-			if err := client.Start(ctx); err != nil && ctx.Err() == nil {
+			go handler.Run(hctx)
+			if err := client.Start(hctx); err != nil && hctx.Err() == nil {
 				slog.Error("command dm client failed", "room", roomID, "err", err)
 			}
 		}(sc.RoomID, dmClient, h)
+		slog.Info("command handler started", "room", sc.RoomID, "uids", len(sc.CommandUIDs))
 	}
+
+	// stopCmdHandler tears down the handler for a room. Caller must hold mu.
+	stopCmdHandler := func(roomID int64) {
+		if e, ok := cmdHandlers[roomID]; ok {
+			e.cancel()
+			delete(cmdHandlers, roomID)
+			slog.Info("command handler stopped", "room", roomID)
+		}
+	}
+
+	mu.Lock()
+	for _, sc := range cfg.Streamers {
+		startCmdHandler(sc)
+	}
+	mu.Unlock()
 
 	// Monitor live status for all streamers (created early for hot reload access)
 	mon := stream.NewMonitor(stream.WithMonitorInterval(30 * time.Second))
@@ -237,13 +272,33 @@ func run(cfgPath string) error {
 				delete(active, rid)
 			}
 		}
+		// Reconcile command handlers with the new config: start newly-eligible
+		// streamers, stop removed ones, refresh whitelists on the rest.
+		desired := make(map[int64]config.StreamerConfig)
+		for _, sc := range newCfg.Streamers {
+			if len(sc.CommandUIDs) > 0 && sc.RoomID != 0 {
+				desired[sc.RoomID] = sc
+			}
+		}
+		for rid := range cmdHandlers {
+			if _, ok := desired[rid]; !ok {
+				stopCmdHandler(rid)
+			}
+		}
+		for rid, sc := range desired {
+			if e, ok := cmdHandlers[rid]; ok {
+				e.handler.UpdateUIDs(sc.CommandUIDs)
+			} else {
+				startCmdHandler(sc)
+			}
+		}
 		mu.Unlock()
 
 		// Add new rooms to monitor
 		for _, rid := range newCfg.RoomIDs() {
 			mon.AddRoom(rid)
 		}
-		slog.Info("hot reload: server config + monitor rooms updated")
+		slog.Info("hot reload: server config + monitor rooms + command handlers updated")
 	})
 	hotCfg.Watch()
 
@@ -268,6 +323,26 @@ func run(cfgPath string) error {
 				slog.Info("stopping removed streamer", "room", rid, "name", as.name)
 				as.cancel()
 				delete(active, rid)
+			}
+		}
+
+		// Reconcile command handlers (same as the file-reload path).
+		desired := make(map[int64]config.StreamerConfig)
+		for _, sc := range newCfg.Streamers {
+			if len(sc.CommandUIDs) > 0 && sc.RoomID != 0 {
+				desired[sc.RoomID] = sc
+			}
+		}
+		for rid := range cmdHandlers {
+			if _, ok := desired[rid]; !ok {
+				stopCmdHandler(rid)
+			}
+		}
+		for rid, sc := range desired {
+			if e, ok := cmdHandlers[rid]; ok {
+				e.handler.UpdateUIDs(sc.CommandUIDs)
+			} else {
+				startCmdHandler(sc)
 			}
 		}
 
@@ -351,7 +426,7 @@ func run(cfgPath string) error {
 					mu.Unlock()
 
 					// Link command handler to this controller
-					if ch, ok := cmdHandlers[sc.RoomID]; ok {
+					if ch := getCmdHandler(sc.RoomID); ch != nil {
 						ch.SetController(ctrl)
 					}
 
@@ -373,7 +448,7 @@ func run(cfgPath string) error {
 						delete(active, sc.RoomID)
 						mu.Unlock()
 						webServer.SetController(sc.Name, nil)
-						if ch, ok := cmdHandlers[sc.RoomID]; ok {
+						if ch := getCmdHandler(sc.RoomID); ch != nil {
 							ch.SetController(nil)
 						}
 					} else {
