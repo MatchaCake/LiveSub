@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -108,6 +109,7 @@ func (a *Agent) runPipeline(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return
 			}
+			streamStart := time.Now()
 			err := sttClient.Stream(ctx, pauseReader, resultsCh)
 			if ctx.Err() != nil {
 				return
@@ -120,12 +122,26 @@ func (a *Agent) runPipeline(ctx context.Context) error {
 				return
 			}
 
-			// STT error (e.g., 305s timeout) — reconnect STT only, ffmpeg still alive.
-			slog.Warn("STT stream ended, reconnecting...", "name", sc.Name, "err", err, "backoff", sttBackoff)
-			select {
-			case <-time.After(sttBackoff):
-			case <-ctx.Done():
-				return
+			// A stream that ran for a while was healthy — don't punish the next
+			// reconnect for long-past failures.
+			if time.Since(streamStart) > time.Minute {
+				sttBackoff = time.Second
+			}
+
+			if isSTTRotation(err) {
+				// Google STT enforces a ~305s max stream duration; hitting it is
+				// normal operation, not a failure. Reconnect immediately so
+				// subtitles don't go dark during the wait.
+				slog.Info("STT stream rotated (max duration), reconnecting immediately", "name", sc.Name)
+			} else {
+				// Real STT error — back off before reconnecting.
+				slog.Warn("STT stream ended, reconnecting...", "name", sc.Name, "err", err, "backoff", sttBackoff)
+				select {
+				case <-time.After(sttBackoff):
+				case <-ctx.Done():
+					return
+				}
+				sttBackoff = min(sttBackoff*2, maxSTTBackoff)
 			}
 			newClient, err := stt.NewGoogleSTT(ctx, sc.SourceLang, sc.AltLangs)
 			if err != nil {
@@ -136,7 +152,6 @@ func (a *Agent) runPipeline(ctx context.Context) error {
 				slog.Warn("close old STT client", "err", err)
 			}
 			sttClient = newClient
-			sttBackoff = min(sttBackoff*2, maxSTTBackoff)
 		}
 	}()
 
@@ -197,4 +212,10 @@ func (r *pausableReader) Read(p []byte) (int, error) {
 
 func (r *pausableReader) Close() error {
 	return r.inner.Close()
+}
+
+// isSTTRotation reports whether err is Google STT's normal max-stream-duration
+// cutoff (OutOfRange, ~305s), which requires a reconnect but is not a failure.
+func isSTTRotation(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "Exceeded maximum allowed stream duration")
 }

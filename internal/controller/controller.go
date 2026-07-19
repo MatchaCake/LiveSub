@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -572,7 +573,20 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 			continue
 		}
 		slog.Info("sending", "output", dm.output, "bot", b.Name(), "room", targetRoom, "text", chunk)
-		if err := b.Send(ctx, targetRoom, chunk); err != nil {
+		err := b.Send(ctx, targetRoom, chunk)
+		// Bilibili rate limit (10031 频率过快) is transient — retry instead of
+		// dropping the chunk (and everything after it).
+		for retry := 1; err != nil && isRateLimited(err) && retry <= 2; retry++ {
+			wait := time.Duration(retry) * 2 * time.Second
+			slog.Warn("danmaku rate limited, retrying", "output", dm.output, "bot", b.Name(), "retry", retry, "wait", wait)
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return
+			}
+			err = b.Send(ctx, targetRoom, chunk)
+		}
+		if err != nil {
 			slog.Error("send failed", "output", dm.output, "bot", b.Name(), "err", err)
 			break
 		}
@@ -587,6 +601,11 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 		}
 	}
 	c.mu.Unlock()
+}
+
+// isRateLimited reports whether err is Bilibili's danmaku frequency limit (code 10031).
+func isRateLimited(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), "10031") || strings.Contains(err.Error(), "频率过快"))
 }
 
 // splitWithWrap splits text into chunks where each chunk is wrapped with prefix+suffix
