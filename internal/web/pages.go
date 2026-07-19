@@ -111,7 +111,7 @@ const indexHTML = `<!DOCTYPE html>
     <div id="langSwitcherSlot"></div>
     <span id="userInfo"></span>
     <a href="/admin" class="link-btn" data-i18n="admin">⚙️ 管理</a>
-    <a href="/api/logout" class="link-btn" data-i18n="logout">退出登录</a>
+    <a href="#" class="link-btn" data-i18n="logout" onclick="fetch('/api/logout',{method:'POST'}).then(function(){location='/login';});return false;">退出登录</a>
   </div>
 </div>
 <div id="content"><div class="empty">加载中...</div></div>
@@ -328,16 +328,16 @@ function renderStatus(data) {
 }
 
 async function skipMsg(streamerName, msgId) {
-  await fetch('/api/skip?streamer=' + encodeURIComponent(streamerName) + '&id=' + msgId);
+  await fetch('/api/skip?streamer=' + encodeURIComponent(streamerName) + '&id=' + msgId, {method:'POST'});
   fetchStatus();
 }
 
 async function toggleSeq(streamerName, outputName) {
-  await fetch('/api/toggle-seq?streamer=' + encodeURIComponent(streamerName) + '&output=' + encodeURIComponent(outputName));
+  await fetch('/api/toggle-seq?streamer=' + encodeURIComponent(streamerName) + '&output=' + encodeURIComponent(outputName), {method:'POST'});
 }
 
 async function toggle(streamerName, outputName) {
-  await fetch('/api/toggle?streamer=' + encodeURIComponent(streamerName) + '&output=' + encodeURIComponent(outputName));
+  await fetch('/api/toggle?streamer=' + encodeURIComponent(streamerName) + '&output=' + encodeURIComponent(outputName), {method:'POST'});
   fetchStatus();
 }
 
@@ -987,12 +987,12 @@ async function editUser(id) {
   var acctChoices = allAccounts.map(function(a) { return {name: a, checked: (u.accounts||[]).indexOf(a) !== -1}; });
   var acctStr = prompt(
     t('assign_accounts_prompt') + '\n' + acctChoices.map(function(a,i) { return (i+1) + '. ' + a.name + (a.checked?' ✓':''); }).join('\n'),
-    acctChoices.filter(function(a) { return a.checked; }).map(function(_,i) { return i+1; }).join(',')
+    acctChoices.map(function(a,i) { return a.checked ? (i+1) : null; }).filter(function(x) { return x !== null; }).join(',')
   );
   var roomChoices = allStreamers.map(function(s) { return {room_id: s.room_id, name: s.name, checked: (u.rooms||[]).indexOf(s.room_id) !== -1}; });
   var roomStr = prompt(
     t('assign_rooms_prompt') + '\n' + roomChoices.map(function(r,i) { return (i+1) + '. ' + r.name + ' (#' + r.room_id + ')' + (r.checked?' ✓':''); }).join('\n'),
-    roomChoices.filter(function(r) { return r.checked; }).map(function(_,i) { return i+1; }).join(',')
+    roomChoices.map(function(r,i) { return r.checked ? (i+1) : null; }).filter(function(x) { return x !== null; }).join(',')
   );
   if (acctStr === null && roomStr === null && (newPw === null || newPw === '')) return;
   var body = {};
@@ -1078,7 +1078,7 @@ async function startQRLogin() {
   document.getElementById('qrBtn').style.display = 'none';
   document.getElementById('qrStatus').textContent = t('qr_scan');
   var img = document.createElement('img');
-  img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(data.url);
+  img.src = '/api/admin/bili-qr/image?data=' + encodeURIComponent(data.url);
   img.alt = 'QR';
   img.style.cssText = 'width:200px;height:200px;';
   var qrImg = document.getElementById('qrImage');

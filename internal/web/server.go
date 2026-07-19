@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	qrcode "github.com/skip2/go-qrcode"
 
 	"github.com/christian-lee/livesub/internal/auth"
 	"github.com/christian-lee/livesub/internal/bot"
@@ -67,8 +69,13 @@ type Server struct {
 
 	// WebSocket clients for live status push
 	wsMu      sync.Mutex
-	wsConns   map[*websocket.Conn]bool
+	// wsConns maps each connection to its room filter: nil = admin (sees all),
+	// otherwise only streamers whose room is in the set are pushed.
+	wsConns   map[*websocket.Conn]map[int64]bool
 	wsBroadch chan struct{} // coalesce rapid broadcasts
+
+	loginMu    sync.Mutex
+	loginFails map[string]*loginFailState // client IP → failure state
 }
 
 func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string, cfg *config.Config, cfgPath string) *Server {
@@ -80,8 +87,9 @@ func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string
 		cfgPath:       cfgPath,
 		transcriptDir: transcriptDir,
 		streamers:     make(map[string]*streamerRuntime),
-		wsConns:       make(map[*websocket.Conn]bool),
+		wsConns:       make(map[*websocket.Conn]map[int64]bool),
 		wsBroadch:     make(chan struct{}, 1),
+		loginFails:    make(map[string]*loginFailState),
 	}
 	// Load persisted sessions
 	s.store.CleanExpiredSessions()
@@ -268,16 +276,19 @@ func (s *Server) Start() {
 	// Public
 	mux.HandleFunc("/login", s.handleLoginPage)
 	mux.HandleFunc("/api/login", s.handleLogin)
-	mux.HandleFunc("/api/logout", s.handleLogout)
+	mux.HandleFunc("/api/logout", postOnly(s.handleLogout))
 
 	// Authenticated
 	mux.HandleFunc("/", s.requireAuth(s.handleIndex))
 	mux.HandleFunc("/api/status", s.requireAuth(s.handleStatus))
 	mux.HandleFunc("/ws/status", s.requireAuth(s.handleWS))
-	mux.HandleFunc("/api/toggle", s.requireAuth(s.handleToggle))
-	mux.HandleFunc("/api/toggle-seq", s.requireAuth(s.handleToggleSeq))
-	mux.HandleFunc("/api/toggle-autostart", s.requireAuth(s.handleToggleAutoStart))
-	mux.HandleFunc("/api/skip", s.requireAuth(s.handleSkip))
+	// State-changing endpoints are POST-only: SameSite=Lax cookies ARE sent on
+	// top-level GET navigation, so GET here would be CSRF-able (any web page
+	// could pause translation / skip messages via a link).
+	mux.HandleFunc("/api/toggle", s.requireAuth(postOnly(s.handleToggle)))
+	mux.HandleFunc("/api/toggle-seq", s.requireAuth(postOnly(s.handleToggleSeq)))
+	mux.HandleFunc("/api/toggle-autostart", s.requireAuth(postOnly(s.handleToggleAutoStart)))
+	mux.HandleFunc("/api/skip", s.requireAuth(postOnly(s.handleSkip)))
 	mux.HandleFunc("/api/me", s.requireAuth(s.handleMe))
 	mux.HandleFunc("/api/transcripts", s.requireAuth(s.handleTranscripts))
 	mux.HandleFunc("/api/transcripts/download", s.requireAuth(s.handleTranscriptDownload))
@@ -294,17 +305,49 @@ func (s *Server) Start() {
 	mux.HandleFunc("/api/admin/bili-accounts", s.requireAdmin(s.handleBiliAccounts))
 	mux.HandleFunc("/api/admin/bili-account", s.requireAdmin(s.handleBiliAccount))
 	mux.HandleFunc("/api/admin/bili-qr/generate", s.requireAdmin(s.handleBiliQRGenerate))
+	mux.HandleFunc("/api/admin/bili-qr/image", s.requireAdmin(s.handleBiliQRImage))
 	mux.HandleFunc("/api/admin/bili-qr/poll", s.requireAdmin(s.handleBiliQRPoll))
 	mux.HandleFunc("/api/admin/streamers", s.requireAdmin(s.handleAdminStreamers))
 	mux.HandleFunc("/api/admin/streamer-outputs", s.requireAdmin(s.handleAdminStreamerOutputs))
 
 	addr := fmt.Sprintf(":%d", s.port)
 	slog.Info("web control panel started", "addr", addr)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	go func() {
-		if err := http.ListenAndServe(addr, mux); err != nil {
+		if err := srv.ListenAndServe(); err != nil {
 			slog.Error("web server error", "err", err)
 		}
 	}()
+
+	// Periodic session cleanup: expired tokens otherwise accumulate in memory
+	// and in the DB for the lifetime of a months-long process.
+	go func() {
+		for range time.Tick(1 * time.Hour) {
+			s.store.CleanExpiredSessions()
+			now := time.Now()
+			s.sessions.Range(func(k, v any) bool {
+				if sess, ok := v.(*auth.Session); ok && now.After(sess.Expiry) {
+					s.sessions.Delete(k)
+				}
+				return true
+			})
+		}
+	}()
+}
+
+// postOnly rejects non-POST requests (CSRF hardening for state-changing GETs).
+func postOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		next(w, r)
+	}
 }
 
 func (s *Server) generateToken() (string, error) {
@@ -423,6 +466,62 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 
 // --- Auth handlers ---
 
+// loginFailState tracks failed logins per client IP for lockout.
+type loginFailState struct {
+	count int
+	until time.Time
+}
+
+const (
+	loginMaxFails = 5
+	loginLockout  = 15 * time.Minute
+)
+
+// clientIP returns the direct peer address. X-Forwarded-For is deliberately
+// ignored — the server listens without a reverse proxy, so that header is
+// attacker-controlled and would let anyone spoof audit-log IPs / evade lockout.
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+func (s *Server) loginLocked(ip string) bool {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+	st, ok := s.loginFails[ip]
+	if !ok {
+		return false
+	}
+	if st.count >= loginMaxFails && time.Now().Before(st.until) {
+		return true
+	}
+	if time.Now().After(st.until) && st.count >= loginMaxFails {
+		delete(s.loginFails, ip) // lockout expired
+	}
+	return false
+}
+
+func (s *Server) recordLoginResult(ip string, ok bool) {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+	if ok {
+		delete(s.loginFails, ip)
+		return
+	}
+	st := s.loginFails[ip]
+	if st == nil {
+		st = &loginFailState{}
+		s.loginFails[ip] = st
+	}
+	st.count++
+	if st.count >= loginMaxFails {
+		st.until = time.Now().Add(loginLockout)
+	}
+}
+
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "method not allowed", 405)
@@ -435,11 +534,19 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
+	ip := clientIP(r)
+	if s.loginLocked(ip) {
+		jsonError(w, "尝试次数过多，请 15 分钟后再试", 429)
+		return
+	}
+
 	u, err := s.store.Authenticate(username, password)
 	if err != nil || u == nil {
+		s.recordLoginResult(ip, false)
 		jsonError(w, "用户名或密码错误", 401)
 		return
 	}
+	s.recordLoginResult(ip, true)
 
 	token, err := s.generateToken()
 	if err != nil {
@@ -449,7 +556,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	expiry := time.Now().Add(7 * 24 * time.Hour)
 	s.sessions.Store(token, &auth.Session{UserID: u.ID, Expiry: expiry})
-	s.store.SaveSession(token, u.ID, expiry)
+	if err := s.store.SaveSession(token, u.ID, expiry); err != nil {
+		slog.Error("persist session failed (session lost on restart)", "err", err)
+	}
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "livesub_token",
@@ -460,10 +569,6 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	ip := r.Header.Get("X-Forwarded-For")
-	if ip == "" {
-		ip = r.RemoteAddr
-	}
 	s.store.Log(u.ID, u.Username, "登录", "", ip)
 	slog.Info("user logged in", "username", username, "admin", u.IsAdmin, "ip", r.RemoteAddr)
 	jsonOK(w, map[string]any{"ok": true, "is_admin": u.IsAdmin})
@@ -631,7 +736,12 @@ func (s *Server) toggleOutputBool(w http.ResponseWriter, r *http.Request, fieldN
 	field := getField(o)
 	*field = !*field
 	newVal := *field
-	rt := s.streamers[streamerName]
+	// Snapshot ctrl under the lock — rt.ctrl is written by SetController (with
+	// lock held), reading it after Unlock is a data race.
+	var ctrl *controller.Controller
+	if rt := s.streamers[streamerName]; rt != nil {
+		ctrl = rt.ctrl
+	}
 	if err := config.Save(s.cfgPath, s.cfg); err != nil {
 		s.mu.Unlock()
 		http.Error(w, `{"error":"save failed"}`, 500)
@@ -639,8 +749,8 @@ func (s *Server) toggleOutputBool(w http.ResponseWriter, r *http.Request, fieldN
 	}
 	s.mu.Unlock()
 
-	if rt != nil && rt.ctrl != nil {
-		syncCtrl(rt.ctrl, outputName, newVal)
+	if ctrl != nil {
+		syncCtrl(ctrl, outputName, newVal)
 	}
 	s.BroadcastStatus()
 	jsonOK(w, map[string]any{"ok": true, fieldName: newVal})
@@ -651,13 +761,29 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
+	// Resolve the room filter BEFORE upgrading, mirroring /api/status: without
+	// it the broadcast path pushes every streamer's subtitles to every user.
+	u := s.getUser(r)
+	if u == nil {
+		http.Error(w, `{"error":"unauthorized"}`, 401)
+		return
+	}
+	var userRooms map[int64]bool
+	if !u.IsAdmin {
+		rooms, _ := s.store.GetUserRooms(u.ID)
+		userRooms = make(map[int64]bool, len(rooms))
+		for _, rid := range rooms {
+			userRooms[rid] = true
+		}
+	}
+
 	conn, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Warn("ws upgrade failed", "err", err)
 		return
 	}
 	s.wsMu.Lock()
-	s.wsConns[conn] = true
+	s.wsConns[conn] = userRooms
 	s.wsMu.Unlock()
 
 	// Keep connection alive, remove on close
@@ -693,9 +819,9 @@ func (s *Server) runWSBroadcast() {
 
 func (s *Server) doBroadcast() {
 	s.wsMu.Lock()
-	conns := make([]*websocket.Conn, 0, len(s.wsConns))
-	for c := range s.wsConns {
-		conns = append(conns, c)
+	conns := make(map[*websocket.Conn]map[int64]bool, len(s.wsConns))
+	for c, rooms := range s.wsConns {
+		conns[c] = rooms
 	}
 	s.wsMu.Unlock()
 
@@ -703,12 +829,25 @@ func (s *Server) doBroadcast() {
 		return
 	}
 
-	s.mu.RLock()
-	streamers := s.streamerStates(nil)
-	s.mu.RUnlock()
-
-	data, _ := json.Marshal(StatusResponse{Streamers: streamers, BotNames: s.pool.Names()})
-	for _, c := range conns {
+	botNames := s.pool.Names()
+	// Marshal one payload per distinct filter (admin nil filter is shared).
+	var adminData []byte
+	for c, rooms := range conns {
+		var data []byte
+		if rooms == nil {
+			if adminData == nil {
+				s.mu.RLock()
+				streamers := s.streamerStates(nil)
+				s.mu.RUnlock()
+				adminData, _ = json.Marshal(StatusResponse{Streamers: streamers, BotNames: botNames})
+			}
+			data = adminData
+		} else {
+			s.mu.RLock()
+			streamers := s.streamerStates(rooms)
+			s.mu.RUnlock()
+			data, _ = json.Marshal(StatusResponse{Streamers: streamers, BotNames: botNames})
+		}
 		// Bound the write: without a deadline, a single stalled client (full TCP
 		// buffer, half-open connection) blocks this sole broadcast goroutine
 		// forever and freezes all WS pushes.
@@ -881,7 +1020,10 @@ func (s *Server) handleTranscripts(w http.ResponseWriter, r *http.Request) {
 
 	files, err := transcript.ListFiles(s.transcriptDir)
 	if err != nil {
-		jsonOK(w, []transcript.FileInfo{})
+		// Surface the failure — an empty list here silently masks disk/permission
+		// problems as "no transcripts".
+		slog.Error("list transcripts", "err", err)
+		jsonError(w, "failed to list transcripts", 500)
 		return
 	}
 	if files == nil {
@@ -921,7 +1063,8 @@ func (s *Server) handleTranscriptDownload(w http.ResponseWriter, r *http.Request
 	}
 
 	filename := r.URL.Query().Get("file")
-	if filename == "" || filepath.Base(filename) != filename {
+	if filename == "" || filepath.Base(filename) != filename ||
+		filename == "." || filename == ".." { // filepath.Base("..") == ".." passes the first check
 		http.Error(w, "invalid filename", 400)
 		return
 	}
@@ -1010,6 +1153,25 @@ func (s *Server) handleBiliQRGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, qr)
+}
+
+// handleBiliQRImage renders a QR code PNG locally. Previously the frontend sent
+// the Bilibili login URL (containing qrcode_key) to api.qrserver.com — handing a
+// third party everything needed to poll the login and obtain SESSDATA.
+func (s *Server) handleBiliQRImage(w http.ResponseWriter, r *http.Request) {
+	data := r.URL.Query().Get("data")
+	if data == "" || len(data) > 1024 {
+		http.Error(w, `{"error":"invalid data"}`, 400)
+		return
+	}
+	png, err := qrcode.Encode(data, qrcode.Medium, 200)
+	if err != nil {
+		jsonError(w, "qr encode failed", 500)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(png)
 }
 
 func (s *Server) handleBiliQRPoll(w http.ResponseWriter, r *http.Request) {
@@ -1447,11 +1609,7 @@ func (s *Server) audit(r *http.Request, action, detail string) {
 	if u == nil {
 		return
 	}
-	ip := r.Header.Get("X-Forwarded-For")
-	if ip == "" {
-		ip = r.RemoteAddr
-	}
-	s.store.Log(u.ID, u.Username, action, detail, ip)
+	s.store.Log(u.ID, u.Username, action, detail, clientIP(r))
 }
 
 // --- Pages ---

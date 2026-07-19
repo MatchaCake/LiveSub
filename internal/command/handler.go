@@ -87,7 +87,10 @@ func (h *Handler) Run(ctx context.Context) {
 			if !ok || d == nil {
 				continue
 			}
-			h.handleDanmaku(d)
+			// Handle async: replyLines sleeps between chunks (500ms × lines) and
+			// sends over the network — doing that inline stalls this event loop
+			// and backpressures the danmaku client's broadcast channel.
+			go h.handleDanmaku(d)
 		}
 	}
 }

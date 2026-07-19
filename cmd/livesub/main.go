@@ -125,6 +125,14 @@ func run(cfgPath string) error {
 		}
 		for _, a := range dbAccounts {
 			if !a.Valid {
+				// Disable any live bot for this account: leaving it in the pool
+				// keeps sending with a revoked cookie until the next restart.
+				if existing := pool.Get(a.Name); existing != nil {
+					if bb, ok := existing.(*bot.BilibiliBot); ok {
+						bb.UpdateCredentials("", "", 0, 0)
+						slog.Info("disabled invalid bot account", "name", a.Name)
+					}
+				}
 				continue
 			}
 			existing := pool.Get(a.Name)
@@ -153,6 +161,7 @@ func run(cfgPath string) error {
 	// Active streams map: room_id → activeStream
 	var mu sync.Mutex
 	active := make(map[int64]*activeStream)
+	var streamWg sync.WaitGroup // tracks stream pipeline goroutines for graceful shutdown
 
 	// Web server
 	webServer := web.NewServer(pool, webPort, authStore, transcriptDir, cfg, cfgPath)
@@ -212,8 +221,24 @@ func run(cfgPath string) error {
 		syncDBBots()
 		// Update server config pointer
 		webServer.UpdateConfig(newCfg)
-		// Update config reference
-		cfg = newCfg
+
+		// Stop pipelines for streamers removed by a direct file edit —
+		// mirrors OnStreamerChange (web UI path); without this the removed
+		// streamer keeps translating until the process exits.
+		newRoomSet := make(map[int64]bool)
+		for _, rid := range newCfg.RoomIDs() {
+			newRoomSet[rid] = true
+		}
+		mu.Lock()
+		for rid, as := range active {
+			if !newRoomSet[rid] {
+				slog.Info("stopping streamer removed from config", "room", rid, "name", as.name)
+				as.cancel()
+				delete(active, rid)
+			}
+		}
+		mu.Unlock()
+
 		// Add new rooms to monitor
 		for _, rid := range newCfg.RoomIDs() {
 			mon.AddRoom(rid)
@@ -246,11 +271,6 @@ func run(cfgPath string) error {
 			}
 		}
 
-		// Find rooms that were added
-		currentRooms := make(map[int64]bool)
-		for rid := range active {
-			currentRooms[rid] = true
-		}
 		mu.Unlock()
 
 		// Sync monitor rooms
@@ -270,6 +290,14 @@ func run(cfgPath string) error {
 			currentCfg := hotCfg.Get()
 			sc := currentCfg.FindStreamerByRoom(ev.RoomID)
 			if sc == nil {
+				// Streamer removed from config (file edit / web UI) while its
+				// pipeline is running: still honor offline events, otherwise the
+				// pipeline becomes an unstoppable orphan.
+				if as, ok := active[ev.RoomID]; ok && !ev.Live {
+					slog.Info("room removed from config went offline, stopping orphan", "name", as.name, "room", ev.RoomID)
+					as.cancel()
+					delete(active, ev.RoomID)
+				}
 				mu.Unlock()
 				slog.Warn("monitor event for unknown room", "room", ev.RoomID)
 				continue
@@ -298,7 +326,9 @@ func run(cfgPath string) error {
 				}
 				mu.Unlock()
 
+				streamWg.Add(1)
 				go func(sc config.StreamerConfig) {
+					defer streamWg.Done()
 					// Create transcript logger for this session
 					tlog, err := transcript.NewLogger(transcriptDir, sc.RoomID, sc.Name)
 					if err != nil {
@@ -376,6 +406,20 @@ func run(cfgPath string) error {
 	openBrowser(webURL)
 
 	<-ctx.Done()
+
+	// Graceful drain: give pipelines a bounded window to finish their teardown
+	// (controller flush, transcript Close). Exiting immediately loses the tail
+	// of every transcript on each restart/deploy.
+	drained := make(chan struct{})
+	go func() {
+		streamWg.Wait()
+		close(drained)
+	}()
+	select {
+	case <-drained:
+	case <-time.After(10 * time.Second):
+		slog.Warn("shutdown drain timed out, exiting anyway")
+	}
 	return ctx.Err()
 }
 

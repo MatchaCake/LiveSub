@@ -159,17 +159,24 @@ func (l *Logger) Write(sourceLang, source, targetLang, translated string) {
 	}
 }
 
-// Close flushes and closes the file.
+// Close flushes and closes the file. Subsequent Write calls become no-ops
+// (writer is nilled so the guard in Write actually takes effect).
 func (l *Logger) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	var err error
 	if l.writer != nil {
 		l.writer.Flush()
+		err = l.writer.Error() // surface a failed final flush instead of swallowing it
+		l.writer = nil
 	}
 	if l.file != nil {
-		return l.file.Close()
+		if cerr := l.file.Close(); err == nil {
+			err = cerr
+		}
+		l.file = nil
 	}
-	return nil
+	return err
 }
 
 // Path returns the file path.
@@ -206,7 +213,7 @@ func ListFiles(dir string) ([]FileInfo, error) {
 	var files []FileInfo
 	for i := len(entries) - 1; i >= 0; i-- {
 		e := entries[i]
-		if e.IsDir() {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".csv") {
 			continue
 		}
 		info, err := e.Info()

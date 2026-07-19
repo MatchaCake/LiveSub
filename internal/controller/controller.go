@@ -187,12 +187,18 @@ func (c *Controller) SetPaused(outputName string, paused bool) {
 func (c *Controller) UpdateOutput(cfg config.OutputConfig) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for i := range c.outputs {
-		if c.outputs[i].Name == cfg.Name {
-			c.outputs[i] = cfg
+	// Copy-on-write: run() snapshots c.outputs under RLock and then reads the
+	// elements WITHOUT the lock; mutating elements in place would race with
+	// those reads (torn string headers). Replacing the slice is safe.
+	newOutputs := make([]config.OutputConfig, len(c.outputs))
+	copy(newOutputs, c.outputs)
+	for i := range newOutputs {
+		if newOutputs[i].Name == cfg.Name {
+			newOutputs[i] = cfg
 			break
 		}
 	}
+	c.outputs = newOutputs
 	if s, ok := c.outputStates[cfg.Name]; ok {
 		syncOutputState(s, cfg)
 	}
@@ -234,12 +240,16 @@ func (c *Controller) SetAutoStart(outputName string, autoStart bool) {
 func (c *Controller) SetShowSeq(outputName string, showSeq bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for i := range c.outputs {
-		if c.outputs[i].Name == outputName {
-			c.outputs[i].ShowSeq = showSeq
+	// Copy-on-write for the same reason as UpdateOutput.
+	newOutputs := make([]config.OutputConfig, len(c.outputs))
+	copy(newOutputs, c.outputs)
+	for i := range newOutputs {
+		if newOutputs[i].Name == outputName {
+			newOutputs[i].ShowSeq = showSeq
 			break
 		}
 	}
+	c.outputs = newOutputs
 	if s, ok := c.outputStates[outputName]; ok {
 		s.ShowSeq = showSeq
 	}
@@ -268,15 +278,24 @@ func (c *Controller) IsAllPaused() bool {
 func (c *Controller) SkipPending(msgID int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.skipSet[msgID] = true
-	// Also remove from pending in outputStates for UI feedback
+	// Only mark IDs that are actually still pending: a skip racing with the
+	// send (message already delivered) would otherwise leave a skipSet entry
+	// nobody ever consumes — a slow leak over a long stream.
+	found := false
 	for _, st := range c.outputStates {
 		for i, p := range st.Pending {
 			if p.ID == msgID {
 				st.Pending = append(st.Pending[:i], st.Pending[i+1:]...)
+				found = true
 				break
 			}
 		}
+		if found {
+			break
+		}
+	}
+	if found {
+		c.skipSet[msgID] = true
 	}
 }
 
@@ -320,17 +339,87 @@ func (c *Controller) run(ctx context.Context) {
 
 	// Per-output ordered sender
 	type outputSender struct {
-		nextSeq    int
-		seqCounter int
-		pending    map[int]string // seq → text to send
+		nextSeq      int
+		seqCounter   int
+		pending      map[int]string // seq → text to send
+		waitingSince time.Time      // when we started waiting for nextSeq (zero = not waiting)
 	}
 	senders := make(map[string]*outputSender)
+	c.mu.RLock()
 	for _, o := range c.outputs {
 		senders[o.Name] = &outputSender{pending: make(map[int]string)}
 	}
+	c.mu.RUnlock()
+
+	// If nextSeq never arrives (translation goroutine panicked, Submit dropped
+	// at shutdown race, ...), skip ahead instead of stalling this output for the
+	// rest of the stream with pending growing unbounded.
+	const seqGapTimeout = 10 * time.Second
 
 	// Delay queue: messages waiting to be sent
 	var delayQueue []delayedMsg
+
+	// flushSender drains s.pending in seq order into the delay queue and
+	// maintains the seq-gap wait timer. Shared by the translation path and the
+	// gap-recovery path.
+	flushSender := func(name string, s *outputSender) {
+		for {
+			txt, ok := s.pending[s.nextSeq]
+			if !ok {
+				break
+			}
+			delete(s.pending, s.nextSeq)
+			s.nextSeq++
+
+			if txt == "" {
+				continue
+			}
+
+			c.mu.Lock()
+			isPaused := c.paused[name]
+			c.mu.Unlock()
+
+			if isPaused {
+				slog.Info("paused, dropping", "output", name, "text", txt)
+				continue
+			}
+
+			// Assign message ID and push to delay queue
+			c.mu.Lock()
+			msgID := c.nextMsgID
+			c.nextMsgID++
+			sendAt := time.Now().Add(c.sendDelay)
+			// Add to pending in output state for UI
+			if st, ok := c.outputStates[name]; ok {
+				st.Pending = append(st.Pending, PendingMsg{
+					ID:     msgID,
+					Text:   txt,
+					SendAt: sendAt.UnixMilli(),
+				})
+				st.LastText = txt
+			}
+			c.mu.Unlock()
+
+			delayQueue = append(delayQueue, delayedMsg{
+				id:     msgID,
+				text:   txt,
+				sendAt: sendAt,
+				output: name,
+				seqNum: s.seqCounter,
+			})
+			s.seqCounter++
+			c.notifyChange()
+		}
+
+		// Track whether this output is stuck waiting for a missing seq.
+		if len(s.pending) > 0 {
+			if s.waitingSince.IsZero() {
+				s.waitingSince = time.Now()
+			}
+		} else {
+			s.waitingSince = time.Time{}
+		}
+	}
 
 	// Ticker to check delay queue
 	ticker := time.NewTicker(200 * time.Millisecond)
@@ -405,56 +494,28 @@ func (c *Controller) run(ctx context.Context) {
 				s.pending[t.Seq] = text
 
 				// Flush in order → push to delay queue
-				for {
-					txt, ok := s.pending[s.nextSeq]
-					if !ok {
-						break
-					}
-					delete(s.pending, s.nextSeq)
-					s.nextSeq++
-
-					if txt == "" {
-						continue
-					}
-
-					c.mu.Lock()
-					isPaused := c.paused[o.Name]
-					c.mu.Unlock()
-
-					if isPaused {
-						slog.Info("paused, dropping", "output", o.Name, "text", txt)
-						continue
-					}
-
-					// Assign message ID and push to delay queue
-					c.mu.Lock()
-					msgID := c.nextMsgID
-					c.nextMsgID++
-					sendAt := time.Now().Add(c.sendDelay)
-					// Add to pending in output state for UI
-					if st, ok := c.outputStates[o.Name]; ok {
-						st.Pending = append(st.Pending, PendingMsg{
-							ID:     msgID,
-							Text:   txt,
-							SendAt: sendAt.UnixMilli(),
-						})
-						st.LastText = txt
-					}
-					c.mu.Unlock()
-
-					delayQueue = append(delayQueue, delayedMsg{
-						id:     msgID,
-						text:   txt,
-						sendAt: sendAt,
-						output: o.Name,
-						seqNum: s.seqCounter,
-					})
-					s.seqCounter++
-					c.notifyChange()
-				}
+				flushSender(o.Name, s)
 			}
 
 		case <-ticker.C:
+			// Seq-gap recovery: if an output has waited too long for a missing
+			// seq, jump to the smallest buffered seq so it doesn't stall forever.
+			for name, s := range senders {
+				if len(s.pending) == 0 || s.waitingSince.IsZero() || time.Since(s.waitingSince) < seqGapTimeout {
+					continue
+				}
+				minSeq := -1
+				for seq := range s.pending {
+					if minSeq == -1 || seq < minSeq {
+						minSeq = seq
+					}
+				}
+				slog.Warn("seq gap timeout, skipping ahead", "output", name, "from", s.nextSeq, "to", minSeq, "buffered", len(s.pending))
+				s.nextSeq = minSeq
+				s.waitingSince = time.Time{}
+				flushSender(name, s) // drain immediately — a quiet stream may not deliver another translation for a while
+			}
+
 			// Send messages whose delay has expired
 			delayQueue = c.processDelayQueue(ctx, delayQueue)
 
@@ -516,8 +577,12 @@ func (c *Controller) flushDelayQueue(ctx context.Context, queue []delayedMsg) {
 		if skipped {
 			delete(c.skipSet, dm.id)
 		}
+		// Respect pause on the shutdown flush too — otherwise messages the user
+		// paused (or is still reviewing in the delay window) blast out the moment
+		// the stream ends.
+		isPaused := c.paused[dm.output]
 		c.mu.Unlock()
-		if !skipped {
+		if !skipped && !isPaused {
 			c.sendMessage(ctx, dm)
 		}
 	}
