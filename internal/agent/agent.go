@@ -96,7 +96,10 @@ func (a *Agent) runPipeline(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer sttClient.Close()
+	// NOTE: no `defer sttClient.Close()` here — that would bind the receiver to
+	// the FIRST client only, while the reconnect goroutine below replaces it on
+	// every 305s rotation (leaking the final client). The goroutine owns the
+	// client and closes whichever instance is current when it exits.
 
 	// Pipeline: STT → Translate fan-out → Controller
 	pauseReader := &pausableReader{inner: audioReader, isPaused: func() bool {
@@ -109,6 +112,7 @@ func (a *Agent) runPipeline(ctx context.Context) error {
 	// Returns (closing resultsCh) when audio EOF is hit — caller restarts pipeline.
 	go func() {
 		defer close(resultsCh)
+		defer func() { sttClient.Close() }() // closes the CURRENT client, not the first
 		sttBackoff := time.Second
 		const maxSTTBackoff = 30 * time.Second
 
