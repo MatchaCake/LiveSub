@@ -32,7 +32,9 @@ func NewGeminiTranslator(ctx context.Context, apiKey, model string, opts ...Tran
 	t := &GeminiTranslator{
 		client:        client,
 		model:         model,
-		fallbackModel: "gemini-2.0-flash",
+		// Rolling alias maintained by Google — pinned versions (2.0-flash,
+		// 2.5-flash) have been retired for new users and 404.
+		fallbackModel: "gemini-flash-latest",
 	}
 	for _, o := range opts {
 		o(t)
@@ -99,9 +101,12 @@ func (t *GeminiTranslator) Translate(ctx context.Context, text, sourceLang, targ
 			if !looksLikeSource(fallbackResult, sourceLang, targetLang) {
 				return fallbackResult, nil
 			}
+		} else {
+			slog.Warn("fallback translate failed", "model", t.fallbackModel, "err", err2)
 		}
-		// If fallback also fails, return empty to skip this message
-		return "", nil
+		// Fallback failed or still looks untranslated — a possibly-wrong-language
+		// subtitle is better than silently dropping the line.
+		return result, nil
 	}
 
 	slog.Debug("translated", "from", text, "to", result, "target", targetLang, "model", model)
@@ -154,8 +159,11 @@ func looksLikeSource(text, sourceLang, targetLang string) bool {
 		return true
 	}
 
-	// Target is CJK (zh/ja/ko) but result is mostly Latin = wrong language (English)
-	if (tgtShort == "zh" || tgtShort == "ja" || tgtShort == "ko") && latinRatio > 0.5 {
+	// Target is CJK (zh/ja/ko) but result is mostly Latin = wrong language (English).
+	// Names are kept as romaji per the prompt, so a name-heavy but otherwise
+	// translated result can legitimately exceed 50% Latin — only flag when
+	// there are no CJK chars at all.
+	if (tgtShort == "zh" || tgtShort == "ja" || tgtShort == "ko") && latinRatio > 0.5 && cjkCount == 0 {
 		return true
 	}
 
