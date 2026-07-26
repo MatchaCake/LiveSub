@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -63,6 +64,9 @@ type Controller struct {
 	sendDelay  time.Duration // delay before sending (default 3s)
 	onChange   func()        // called when pending/recent changes
 	rrIndex    map[string]int // output name → round-robin index for account pool
+	// output name → time we were muted (1003) in its room; suspends sending so
+	// we stop compounding the penalty. Self-clears after muteBreakerTTL.
+	mutedOutputs map[string]time.Time
 	ch         chan Translation
 	done       chan struct{}
 	stopOnce   sync.Once
@@ -589,6 +593,23 @@ func (c *Controller) flushDelayQueue(ctx context.Context, queue []delayedMsg) {
 }
 
 func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
+	// Degeneration guard. LLMs occasionally fall into a token-repetition loop
+	// (2026-07-26: a low-confidence STT segment produced 58 consecutive 等,
+	// which then spammed the room into a mute). Never put such output on the
+	// wire — it is always wrong, and it is what triggers the rate limiter.
+	if reason, bad := isDegenerate(dm.text); bad {
+		slog.Warn("dropping degenerate translation", "output", dm.output,
+			"reason", reason, "text", truncForLog(dm.text))
+		return
+	}
+
+	// Mute breaker: once a room has muted us, further sends only extend the
+	// penalty. Stay silent until an operator clears it.
+	if c.muteBreakerOpen(dm.output) {
+		slog.Warn("send breaker open (muted), dropping", "output", dm.output)
+		return
+	}
+
 	// Find output config (snapshot under lock to avoid race with SyncOutputs)
 	c.mu.RLock()
 	var oCopy config.OutputConfig
@@ -648,19 +669,31 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 		}
 		slog.Info("sending", "output", dm.output, "bot", b.Name(), "room", targetRoom, "text", chunk)
 		err := b.Send(ctx, targetRoom, chunk)
-		// Bilibili rate limit (10031 频率过快) is transient — retry instead of
-		// dropping the chunk (and everything after it).
-		for retry := 1; err != nil && isRateLimited(err) && retry <= 2; retry++ {
-			wait := time.Duration(retry) * 2 * time.Second
-			slog.Warn("danmaku rate limited, retrying", "output", dm.output, "bot", b.Name(), "retry", retry, "wait", wait)
+		// Bilibili rate limit (10031 频率过快): retrying the SAME chunk is what
+		// escalated a degenerate translation into a room-wide mute on 2026-07-26
+		// — each retry adds to the very frequency that is being limited. Subtitles
+		// are time-sensitive, so back off once and DROP; the next line is worth
+		// more than a late one.
+		if err != nil && isRateLimited(err) {
+			slog.Warn("danmaku rate limited, backing off and dropping chunk",
+				"output", dm.output, "bot", b.Name())
 			select {
-			case <-time.After(wait):
+			case <-time.After(rateLimitBackoff):
 			case <-ctx.Done():
 				return
 			}
-			err = b.Send(ctx, targetRoom, chunk)
+			break
 		}
 		if err != nil {
+			// 1003 (被禁言) is terminal for this room — keep sending and every
+			// later line just burns quota and prolongs the penalty. Trip a
+			// breaker so the whole output stops until an operator intervenes.
+			if isMuted(err) {
+				slog.Error("bot muted in room — tripping send breaker",
+					"output", dm.output, "bot", b.Name(), "room", targetRoom, "err", err)
+				c.tripMuteBreaker(dm.output, b.Name())
+				return
+			}
 			slog.Error("send failed", "output", dm.output, "bot", b.Name(), "err", err)
 			break
 		}
@@ -681,6 +714,96 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 func isRateLimited(err error) bool {
 	return err != nil && (strings.Contains(err.Error(), "10031") || strings.Contains(err.Error(), "频率过快"))
 }
+
+// isMuted reports whether err is Bilibili's "muted in this room" (code 1003).
+// Terminal, not transient: retrying only prolongs the penalty.
+func isMuted(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), "1003:") || strings.Contains(err.Error(), "被禁言"))
+}
+
+const (
+	rateLimitBackoff = 3 * time.Second
+	// A translation whose most common rune covers this much of the text is a
+	// repetition loop, not language. Real Chinese/Japanese subtitles never do
+	// this: even "等等等等" (a legitimate "wait wait") is short and mixed with
+	// other characters, so it stays well under the threshold.
+	degenRuneShare = 0.6
+	degenRunLen    = 8 // max tolerated identical consecutive runes
+	degenMinLen    = 8 // below this, skewed ratios are normal ("哈哈哈")
+)
+
+// isDegenerate detects LLM repetition-loop output. Returns a reason for logs.
+func isDegenerate(s string) (string, bool) {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) < degenMinLen {
+		return "", false
+	}
+	// (a) longest run of one rune
+	run, best, bestRune := 1, 1, r[0]
+	for i := 1; i < len(r); i++ {
+		if r[i] == r[i-1] {
+			run++
+			if run > best {
+				best, bestRune = run, r[i]
+			}
+		} else {
+			run = 1
+		}
+	}
+	if best > degenRunLen {
+		return fmt.Sprintf("%d consecutive %q", best, bestRune), true
+	}
+	// (b) single-rune dominance across the whole string
+	counts := map[rune]int{}
+	for _, ch := range r {
+		counts[ch]++
+	}
+	for ch, n := range counts {
+		if float64(n)/float64(len(r)) >= degenRuneShare {
+			return fmt.Sprintf("%q is %.0f%% of text", ch, float64(n)/float64(len(r))*100), true
+		}
+	}
+	return "", false
+}
+
+func truncForLog(s string) string {
+	r := []rune(s)
+	if len(r) <= 40 {
+		return s
+	}
+	return string(r[:40]) + "…"
+}
+
+// tripMuteBreaker records that a bot was muted in this output's room.
+func (c *Controller) tripMuteBreaker(output, bot string) {
+	c.mu.Lock()
+	if c.mutedOutputs == nil {
+		c.mutedOutputs = map[string]time.Time{}
+	}
+	c.mutedOutputs[output] = time.Now()
+	c.mu.Unlock()
+}
+
+// muteBreakerOpen reports whether sending is suspended for this output.
+// The breaker self-clears after muteBreakerTTL so a temporary mute doesn't
+// silence the bot forever without operator action.
+func (c *Controller) muteBreakerOpen(output string) bool {
+	c.mu.RLock()
+	at, ok := c.mutedOutputs[output]
+	c.mu.RUnlock()
+	if !ok {
+		return false
+	}
+	if time.Since(at) > muteBreakerTTL {
+		c.mu.Lock()
+		delete(c.mutedOutputs, output)
+		c.mu.Unlock()
+		return false
+	}
+	return true
+}
+
+const muteBreakerTTL = 10 * time.Minute
 
 // splitWithWrap splits text into chunks where each chunk is wrapped with prefix+suffix
 // and fits within maxLen runes. If maxLen <= 0, returns a single wrapped string.
