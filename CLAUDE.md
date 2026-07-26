@@ -56,6 +56,30 @@ Bot Pool:
 ## Config
 `configs/config.yaml` — Per-streamer config: STT credentials, Gemini API key, outputs (platform + lang + bot), bots, web port, auth
 
+## Translation model selection (measured 2026-07-26)
+
+Current: **`gemini-3.1-flash-lite`**. Live subtitles are a sub-second, non-reasoning
+workload — pick on latency first, then on idiom accuracy. Benchmarked on a real
+failing line (`守ると見せかけて 私は攻める。あ 待って待って登れなかった。少し。`):
+
+| model | latency | verdict |
+|---|---|---|
+| `gemini-3.1-flash-lite` | **0.78s** | **current** — fastest, and the only one that renders 「少し」 correctly as "差一点" |
+| `gemini-3.5-flash-lite` | 0.80s | ok, but mistranslates the trailing 「少し」 as "稍微等下" |
+| `gemini-3.5-flash` | 0.88s | usable **only with `thinkingConfig.thinkingBudget = 0`**; same 「少し」 miss |
+| `gemini-3.6-flash` | 2.35s | **unusable** — rejects `thinkingBudget: 0` (HTTP 400), so it always burns ~190 thinking tokens |
+| `gemini-2.5-flash-lite` | — | previous default; retired after the 2026-07-26 degeneration incident |
+
+Gotcha that makes a good model look broken: 3.x are reasoning models. With a small
+`maxOutputTokens` (e.g. 200) the thinking budget eats the whole allowance and you get
+`finishReason: MAX_TOKENS` with a truncated answer or a leaked draft
+("Drafting translations (aiming for…"). That is a *budget* symptom, not model quality —
+set `thinkingBudget: 0` (where supported) before judging a model.
+
+**Never trust raw model output on the wire.** Any model can fall into a token-repetition
+loop on low-confidence STT input; `internal/controller` drops degenerate output before
+sending (see `degenerate_test.go` for the incident payload).
+
 ## Dependencies
 - `github.com/MatchaCake/bilibili_dm_lib` — Danmaku sending
 - `github.com/MatchaCake/bilibili_stream_lib` — Stream monitoring & audio capture
