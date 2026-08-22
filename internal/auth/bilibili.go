@@ -131,6 +131,49 @@ func (s *Store) ListBiliAccountSummaries() ([]BiliAccountSummary, error) {
 	return accounts, nil
 }
 
+// SetBiliAccountValid flips the stored validity flag. Marking an account
+// invalid also makes syncDBBots disable its live bot, so a dead cookie stops
+// burning sends until the operator re-scans the QR code.
+func (s *Store) SetBiliAccountValid(name string, valid bool) error {
+	v := 0
+	if valid {
+		v = 1
+	}
+	_, err := s.db.Exec(`UPDATE bili_accounts SET valid=? WHERE name=?`, v, name)
+	return err
+}
+
+// CheckSessdataAlive asks Bilibili whether a SESSDATA cookie still carries a
+// login session (nav API isLogin). A network/parse error returns err — the
+// caller must NOT treat that as "expired"; only an explicit isLogin=false is.
+func CheckSessdataAlive(sessdata string) (bool, error) {
+	req, err := http.NewRequest("GET", "https://api.bilibili.com/x/web-interface/nav", nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+	req.AddCookie(&http.Cookie{Name: "SESSDATA", Value: sessdata})
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return false, err
+	}
+	var nav struct {
+		Data struct {
+			IsLogin bool `json:"isLogin"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &nav); err != nil {
+		return false, fmt.Errorf("nav parse: %w", err)
+	}
+	return nav.Data.IsLogin, nil
+}
+
 // DeleteBiliAccount removes an account.
 func (s *Store) DeleteBiliAccount(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM bili_accounts WHERE id=?`, id)

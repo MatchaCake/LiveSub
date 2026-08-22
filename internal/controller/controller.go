@@ -63,6 +63,9 @@ type Controller struct {
 
 	sendDelay  time.Duration // delay before sending (default 3s)
 	onChange   func()        // called when pending/recent changes
+	// called when a bot's send fails with "not logged in" (-101): the cookie is
+	// revoked server-side, so every later send with it is a guaranteed failure.
+	onLoginExpired func(bot string)
 	rrIndex    map[string]int // output name → round-robin index for account pool
 	// output name → time we were muted (1003) in its room; suspends sending so
 	// we stop compounding the penalty. Self-clears after muteBreakerTTL.
@@ -78,6 +81,14 @@ func (c *Controller) OnChange(fn func()) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.onChange = fn
+}
+
+// OnLoginExpired registers a callback fired when a bot's danmaku send fails
+// with Bilibili's -101 (账号未登录), i.e. its cookie has expired.
+func (c *Controller) OnLoginExpired(fn func(bot string)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onLoginExpired = fn
 }
 
 func (c *Controller) notifyChange() {
@@ -655,6 +666,7 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 	}
 
 	chunks := splitWithWrap(dm.text, prefix, o.Suffix, minMax)
+	sent := false
 	for _, chunk := range chunks {
 		// Round-robin: pick next bot for each chunk
 		c.mu.Lock()
@@ -694,12 +706,32 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 				c.tripMuteBreaker(dm.output, b.Name())
 				return
 			}
+			// -101 (账号未登录) is terminal for this bot everywhere — the cookie
+			// is dead, not the room. Report it so the account can be flagged in
+			// the panel instead of failing silently for months (2026-08-22: all
+			// ten cookies had expired and the panel still showed 有效/已发送).
+			if isLoggedOut(err) {
+				slog.Error("bot login expired — cookie revoked, re-scan QR in admin panel",
+					"output", dm.output, "bot", b.Name(), "err", err)
+				c.mu.RLock()
+				fn := c.onLoginExpired
+				c.mu.RUnlock()
+				if fn != nil {
+					go fn(b.Name())
+				}
+				break
+			}
 			slog.Error("send failed", "output", dm.output, "bot", b.Name(), "err", err)
 			break
 		}
+		sent = true
 	}
 
-	// Add to recent
+	// Add to recent — only what actually reached the room. Failed sends used
+	// to land here too, which made the panel lie about delivery.
+	if !sent {
+		return
+	}
 	c.mu.Lock()
 	if st, ok := c.outputStates[dm.output]; ok {
 		st.Recent = append(st.Recent, dm.text)
@@ -708,6 +740,12 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 		}
 	}
 	c.mu.Unlock()
+}
+
+// isLoggedOut reports whether err is Bilibili's "account not logged in"
+// (code -101): the cookie has been revoked or expired server-side.
+func isLoggedOut(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), "-101") || strings.Contains(err.Error(), "账号未登录"))
 }
 
 // isRateLimited reports whether err is Bilibili's danmaku frequency limit (code 10031).

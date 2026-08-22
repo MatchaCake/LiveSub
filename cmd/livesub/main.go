@@ -116,6 +116,12 @@ func run(cfgPath string) error {
 		}
 	}
 
+	// Dedup guard for login-expired marking: -101 fires on every send attempt
+	// (hundreds per stream), but one mark per account per expiry is enough.
+	// A successful QR re-scan (valid=1 in DB) clears the mark via syncDBBots.
+	var expiredMu sync.Mutex
+	expiredMarked := make(map[string]bool)
+
 	// Sync DB accounts to bot pool
 	syncDBBots := func() {
 		dbAccounts, err := authStore.ListBiliAccounts()
@@ -124,6 +130,11 @@ func run(cfgPath string) error {
 			return
 		}
 		for _, a := range dbAccounts {
+			if a.Valid {
+				expiredMu.Lock()
+				delete(expiredMarked, a.Name)
+				expiredMu.Unlock()
+			}
 			if !a.Valid {
 				// Disable any live bot for this account: leaving it in the pool
 				// keeps sending with a revoked cookie until the next restart.
@@ -148,6 +159,57 @@ func run(cfgPath string) error {
 		slog.Info("synced DB accounts to bot pool", "total_bots", len(pool.Names()))
 	}
 	syncDBBots()
+
+	// markLoginExpired flags a dead cookie in the DB (panel shows 已失效) and
+	// disables the live bot via syncDBBots. Idempotent per expiry.
+	markLoginExpired := func(name string) {
+		expiredMu.Lock()
+		if expiredMarked[name] {
+			expiredMu.Unlock()
+			return
+		}
+		expiredMarked[name] = true
+		expiredMu.Unlock()
+		slog.Error("bili account login expired — marked invalid, re-scan QR in admin panel", "name", name)
+		if err := authStore.SetBiliAccountValid(name, false); err != nil {
+			slog.Error("mark bili account invalid", "name", name, "err", err)
+			return
+		}
+		syncDBBots()
+	}
+
+	// Periodic cookie health check: the 2026-08 outage went unnoticed for
+	// weeks because nothing ever re-verified stored cookies. Check at startup
+	// and every 6h; only an explicit isLogin=false marks an account invalid —
+	// network errors are skipped so a flaky connection can't disable bots.
+	checkCookieHealth := func() {
+		accounts, err := authStore.ListBiliAccounts()
+		if err != nil {
+			slog.Error("cookie health check: list accounts", "err", err)
+			return
+		}
+		for _, a := range accounts {
+			if !a.Valid {
+				continue
+			}
+			alive, err := auth.CheckSessdataAlive(a.SESSDATA)
+			if err != nil {
+				slog.Warn("cookie health check skipped (network)", "name", a.Name, "err", err)
+				continue
+			}
+			if !alive {
+				markLoginExpired(a.Name)
+			}
+		}
+	}
+	go func() {
+		checkCookieHealth()
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			checkCookieHealth()
+		}
+	}()
 
 	// Transcript logger setup
 	transcriptDir := filepath.Join(filepath.Dir(cfgPath), "transcripts")
@@ -417,6 +479,7 @@ func run(cfgPath string) error {
 					ctrl := controller.New(pool, sc.Outputs, tlog, sc.RoomID)
 					webServer.SetController(sc.Name, ctrl) // sync pause state BEFORE start
 					ctrl.OnChange(func() { webServer.BroadcastStatus() })
+					ctrl.OnLoginExpired(markLoginExpired)
 					ctrl.Start(streamCtx)
 
 					mu.Lock()
