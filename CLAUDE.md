@@ -56,9 +56,31 @@ Bot Pool:
 ## Config
 `configs/config.yaml` — Per-streamer config: STT credentials, Gemini API key, outputs (platform + lang + bot), bots, web port, auth
 
-## Translation model selection (measured 2026-07-26)
+## Translation model chain (2026-10-14)
 
-Current: **`gemini-3.1-flash-lite`**. Live subtitles are a sub-second, non-reasoning
+Current: **`gemini-3.8-flash`** → fallback `gemini-3.7-flash` → `gemini-3.6-flash`,
+set in server-side `configs/config.yaml`:
+
+```yaml
+translation:
+    model: gemini-3.8-flash
+    fallback_models: [gemini-3.7-flash, gemini-3.6-flash]
+```
+
+`internal/translate` tries the chain in order per line. Any failure (error, 10s
+per-attempt timeout, 429/503, 404 unknown model) puts that model on a 30s cooldown
+and the next one is tried; cooling models are moved to the back, not removed.
+Untranslated-looking output also falls through to the next model. Every call sends
+`thinkingBudget: 0` (a model that rejects it is remembered and called without it).
+Measured 2026-10-14 on the line below, thinking off: 3.8 1.64s / 3.7 1.95s /
+3.6 1.41s, all render 「少し」 as "差一点". With thinking on (SDK default) the same
+models take 6–19s — never deploy a 3.x model without `thinkingBudget: 0`.
+The model in use is logged at Info as `translate model active` whenever it changes.
+The translator is built at startup: model changes need a service restart.
+
+## Translation model selection (measured 2026-07-26, historical)
+
+Then-current: **`gemini-3.1-flash-lite`**. Live subtitles are a sub-second, non-reasoning
 workload — pick on latency first, then on idiom accuracy. Benchmarked on a real
 failing line (`守ると見せかけて 私は攻める。あ 待って待って登れなかった。少し。`):
 
@@ -67,7 +89,7 @@ failing line (`守ると見せかけて 私は攻める。あ 待って待って
 | `gemini-3.1-flash-lite` | **0.78s** | **current** — fastest, and the only one that renders 「少し」 correctly as "差一点" |
 | `gemini-3.5-flash-lite` | 0.80s | ok, but mistranslates the trailing 「少し」 as "稍微等下" |
 | `gemini-3.5-flash` | 0.88s | usable **only with `thinkingConfig.thinkingBudget = 0`**; same 「少し」 miss |
-| `gemini-3.6-flash` | 2.35s | **unusable** — rejects `thinkingBudget: 0` (HTTP 400), so it always burns ~190 thinking tokens |
+| `gemini-3.6-flash` | 2.35s | rejected `thinkingBudget: 0` (HTTP 400) at the time; accepts it as of 2026-10-14 |
 | `gemini-2.5-flash-lite` | — | previous default; retired after the 2026-07-26 degeneration incident |
 
 Gotcha that makes a good model look broken: 3.x are reasoning models. With a small

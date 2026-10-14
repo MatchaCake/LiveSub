@@ -35,6 +35,9 @@ type TranslationConfig struct {
 	Provider string `yaml:"provider" json:"provider"`
 	APIKey   string `yaml:"api_key" json:"api_key"`
 	Model    string `yaml:"model" json:"model"`
+	// FallbackModels are tried in order when the primary model fails
+	// (error, timeout, rate limit, model unavailable).
+	FallbackModels []string `yaml:"fallback_models,omitempty" json:"fallback_models,omitempty"`
 }
 
 type OutputConfig struct {
@@ -93,7 +96,7 @@ func Load(path string) (*Config, error) {
 		},
 		Translation: TranslationConfig{
 			Provider: "gemini",
-			Model:    "gemini-2.0-flash",
+			Model:    "gemini-3.8-flash",
 		},
 		Web: WebConfig{
 			Port: 8899,

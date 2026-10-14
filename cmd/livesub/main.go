@@ -90,7 +90,7 @@ func run(cfgPath string) error {
 	}()
 
 	// Init Gemini translator
-	translator, err := translate.NewGeminiTranslator(ctx, cfg.Translation.APIKey, cfg.Translation.Model)
+	translator, err := translate.NewGeminiTranslator(ctx, cfg.Translation.APIKey, cfg.Translation.Model, cfg.Translation.FallbackModels)
 	if err != nil {
 		return fmt.Errorf("init translator: %w", err)
 	}
