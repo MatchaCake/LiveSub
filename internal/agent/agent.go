@@ -188,6 +188,15 @@ func (a *Agent) runPipeline(ctx context.Context) error {
 			continue
 		}
 
+		// Drop non-speech before spending a translation call on it (STT
+		// placeholders, punctuation, lone particles). Done before taking a seq
+		// so outputs don't wait on a gap.
+		text, reason, junk := controller.JunkSource(result.Text)
+		if junk {
+			slog.Info("skipping junk STT", "name", sc.Name, "reason", reason, "text", result.Text)
+			continue
+		}
+
 		currentSeq := seq
 		seq++
 
@@ -197,7 +206,7 @@ func (a *Agent) runPipeline(ctx context.Context) error {
 			defer func() { <-sem }() // release worker slot
 			defer translateWg.Done()
 			controller.TranslateAndSubmit(ctx, a.ctrl, a.translator, s, text, lang, sc.Outputs)
-		}(currentSeq, result.Text, result.Language)
+		}(currentSeq, text, result.Language)
 	}
 
 	translateWg.Wait()

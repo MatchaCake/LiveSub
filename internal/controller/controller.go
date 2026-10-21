@@ -389,6 +389,10 @@ func (c *Controller) run(ctx context.Context) {
 			if txt == "" {
 				continue
 			}
+			if reason, junk := junkTranslation(txt); junk {
+				slog.Info("dropping junk text", "output", name, "reason", reason, "text", truncForLog(txt))
+				continue
+			}
 
 			c.mu.Lock()
 			isPaused := c.paused[name]
@@ -865,7 +869,11 @@ func splitWithWrap(text, prefix, suffix string, maxLen int) []string {
 	for i < len(runes) {
 		end := i + contentMax
 		if end >= len(runes) {
-			chunks = append(chunks, prefix+string(runes[i:])+suffix)
+			// A tail of pure punctuation ("。" one rune past the limit) is not
+			// worth its own danmaku.
+			if rest := string(runes[i:]); hasContent(rest) || len(chunks) == 0 {
+				chunks = append(chunks, prefix+rest+suffix)
+			}
 			break
 		}
 		breakAt := end

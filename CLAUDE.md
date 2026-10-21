@@ -102,6 +102,15 @@ set `thinkingBudget: 0` (where supported) before judging a model.
 loop on low-confidence STT input; `internal/controller` drops degenerate output before
 sending (see `degenerate_test.go` for the incident payload).
 
+Meaningless lines are filtered too (`internal/controller/junk.go`, 2026-10-22): before
+translation the agent drops empty STT results, pure punctuation, lone particle fragments
+(「た。」「と。」…) and Google STT placeholders (`Unitelligible。` (sic), `Foreign speech`,
+which arrive with 0.8–0.9 confidence and, being detected as Mandarin, used to bypass
+translation straight into the room). Before queueing, the controller drops
+punctuation-only text, bracketed annotations (`（嚼 嚼 / 咬 咬）`, `[音乐]`) and model
+refusals; the splitter no longer sends a lone `。` tail. STT confidence is intentionally
+not used — real speech often scores 0–0.2.
+
 ## Dependencies
 - `github.com/MatchaCake/bilibili_dm_lib` — Danmaku sending
 - `github.com/MatchaCake/bilibili_stream_lib` — Stream monitoring & audio capture
