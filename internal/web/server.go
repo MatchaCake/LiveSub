@@ -1,9 +1,11 @@
 package web
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -62,6 +64,7 @@ type Server struct {
 	sessions         sync.Map // token → *auth.Session
 	onAccountChange  func()
 	onStreamerChange func()
+	cookieRefresh    func(ctx context.Context, id int64, force bool) (*auth.RefreshResult, error)
 	transcriptDir    string
 
 	mu        sync.RWMutex
@@ -103,6 +106,12 @@ func NewServer(pool *bot.Pool, port int, store *auth.Store, transcriptDir string
 	}
 	s.syncRuntimesLocked(cfg)
 	return s
+}
+
+// SetCookieRefresher wires the "立即刷新" admin action to the cookie refresher
+// (the same path the periodic health check uses, so they share its per-account lock).
+func (s *Server) SetCookieRefresher(fn func(ctx context.Context, id int64, force bool) (*auth.RefreshResult, error)) {
+	s.cookieRefresh = fn
 }
 
 // OnAccountChange registers a callback when bilibili accounts change.
@@ -304,6 +313,7 @@ func (s *Server) Start() {
 	mux.HandleFunc("/api/admin/audit", s.requireAdmin(s.handleAdminAudit))
 	mux.HandleFunc("/api/admin/bili-accounts", s.requireAdmin(s.handleBiliAccounts))
 	mux.HandleFunc("/api/admin/bili-account", s.requireAdmin(s.handleBiliAccount))
+	mux.HandleFunc("/api/admin/bili-account/refresh", s.requireAdmin(postOnly(s.handleBiliAccountRefresh)))
 	mux.HandleFunc("/api/admin/bili-qr/generate", s.requireAdmin(s.handleBiliQRGenerate))
 	mux.HandleFunc("/api/admin/bili-qr/image", s.requireAdmin(s.handleBiliQRImage))
 	mux.HandleFunc("/api/admin/bili-qr/poll", s.requireAdmin(s.handleBiliQRPoll))
@@ -1146,6 +1156,40 @@ func (s *Server) handleBiliAccount(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleBiliAccountRefresh runs the official cookie refresh for one account.
+// force=1 refreshes even when Bilibili does not ask for it yet.
+func (s *Server) handleBiliAccountRefresh(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+	if err != nil || id <= 0 {
+		jsonError(w, "invalid id", 400)
+		return
+	}
+	if s.cookieRefresh == nil {
+		jsonError(w, "cookie refresh not available", 503)
+		return
+	}
+	force := r.URL.Query().Get("force") == "1"
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	res, err := s.cookieRefresh(ctx, id, force)
+	if err != nil {
+		msg := err.Error()
+		var rerr *auth.RefreshError
+		if errors.As(err, &rerr) {
+			msg = rerr.Human()
+		}
+		s.audit(r, "刷新B站Cookie失败", fmt.Sprintf("ID=%d %s", id, msg))
+		jsonOK(w, map[string]any{"status": "failed", "error": msg})
+		return
+	}
+	s.audit(r, "刷新B站Cookie", fmt.Sprintf("ID=%d %s", id, res.Status))
+	out := map[string]any{"status": res.Status}
+	if res.ConfirmErr != nil {
+		out["warning"] = res.ConfirmErr.Human()
+	}
+	jsonOK(w, out)
+}
+
 func (s *Server) handleBiliQRGenerate(w http.ResponseWriter, r *http.Request) {
 	qr, err := auth.GenerateQRCode()
 	if err != nil {
@@ -1193,7 +1237,7 @@ func (s *Server) handleBiliQRPoll(w http.ResponseWriter, r *http.Request) {
 			name = uname
 		}
 
-		acc, err := s.store.SaveBiliAccount(name, result.SESSDATA, result.BiliJCT, result.UID, 20, "")
+		acc, err := s.store.SaveBiliAccount(name, result.SESSDATA, result.BiliJCT, result.RefreshToken, result.UID, 20, "")
 		if err != nil {
 			jsonOK(w, map[string]string{"status": "error", "error": err.Error()})
 			return

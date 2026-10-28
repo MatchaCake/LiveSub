@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -35,6 +36,13 @@ func NewStore(dbPath string) (*Store, error) {
 	}
 	if err := s.migrateBili(); err != nil {
 		return nil, fmt.Errorf("migrate bili: %w", err)
+	}
+	// users.db holds Bilibili cookies and refresh_tokens in plain text: keep
+	// it (and the WAL/SHM side files, which contain recent pages) owner-only.
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err := os.Chmod(dbPath+suffix, 0o600); err != nil && !os.IsNotExist(err) {
+			slog.Warn("chmod users.db", "file", dbPath+suffix, "err", err)
+		}
 	}
 	return s, nil
 }

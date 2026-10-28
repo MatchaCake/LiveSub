@@ -111,6 +111,23 @@ punctuation-only text, bracketed annotations (`（嚼 嚼 / 咬 咬）`, `[音�
 refusals; the splitter no longer sends a lone `。` tail. STT confidence is intentionally
 not used — real speech often scores 0–0.2.
 
+## Bilibili cookie auto-refresh (2026-10-28)
+
+`internal/auth/refresh.go` runs Bilibili's official web cookie refresh (same flow as
+bili-digest `refresh.py`): cookie/info → correspond (RSA-OAEP-SHA256 `refresh_<ms>`)
+→ cookie/refresh → nav verify (isLogin + same mid) → write → hot-swap → confirm/refresh.
+- `refresh_token` comes from the QR poll response and lives in `bili_accounts.refresh_token`
+  in `configs/users.db` next to the cookies (plain SQLite; the store chmods
+  users.db/-wal/-shm to 0600 on open). Accounts added before this have no token:
+  re-scan once to enable auto-refresh (panel column 自动续期 shows 缺 refresh_token).
+- The old row is untouched until the new cookie passed nav; the write is a CAS on the
+  old SESSDATA. `OnPersisted` hot-swaps the bot pool and restarts danmaku listeners that
+  used the account *before* confirm invalidates the old cookie. Per-account mutex
+  serializes the 6h health check and the admin button (`POST /api/admin/bili-account/refresh?id=&force=1`).
+- No notification channel exists: failures are logged at Error with the failed step and
+  stored in `refresh_status`/`refresh_error` (shown in the admin panel). Never log cookie
+  or token values; `RefreshError` details are step + HTTP status / API code only.
+
 ## Dependencies
 - `github.com/MatchaCake/bilibili_dm_lib` — Danmaku sending
 - `github.com/MatchaCake/bilibili_stream_lib` — Stream monitoring & audio capture

@@ -170,6 +170,23 @@ func run(cfgPath string) error {
 		}
 		expiredMarked[name] = true
 		expiredMu.Unlock()
+		// A -101 can be stale: a send that started with the pre-refresh cookie
+		// may fail just after confirm/refresh invalidated it. Only mark the
+		// account if the cookie currently stored is dead too.
+		if accs, err := authStore.ListBiliAccounts(); err == nil {
+			for _, a := range accs {
+				if a.Name == name && a.Valid {
+					if alive, err := auth.CheckSessdataAlive(a.SESSDATA); err == nil && alive {
+						slog.Warn("stale -101 ignored: stored cookie is still logged in (likely just refreshed)", "name", name)
+						expiredMu.Lock()
+						delete(expiredMarked, name)
+						expiredMu.Unlock()
+						syncDBBots()
+						return
+					}
+				}
+			}
+		}
 		slog.Error("bili account login expired — marked invalid, re-scan QR in admin panel", "name", name)
 		if err := authStore.SetBiliAccountValid(name, false); err != nil {
 			slog.Error("mark bili account invalid", "name", name, "err", err)
@@ -178,10 +195,52 @@ func run(cfgPath string) error {
 		syncDBBots()
 	}
 
+	// Cookie auto-refresh (official web flow, see internal/auth/refresh.go).
+	// After the new cookie is verified and stored, OnPersisted hot-swaps it
+	// into the bot pool and restarts any danmaku listener that authenticated
+	// with this account — before the old cookie is invalidated.
+	var restartCmdHandlersFor func(account string) // assigned once command handlers exist
+	refresher := auth.NewRefresher(authStore, nil, nil)
+	refresher.OnPersisted = func(acc *auth.BiliAccount) {
+		syncDBBots()
+		if restartCmdHandlersFor != nil {
+			restartCmdHandlersFor(acc.Name)
+		}
+	}
+	// refreshAccount is shared by the health check and the admin "立即刷新"
+	// button; the refresher serializes them per account.
+	refreshAccount := func(rctx context.Context, id int64, force bool) (*auth.RefreshResult, error) {
+		name := fmt.Sprintf("ID=%d", id)
+		if a, err := authStore.GetBiliAccount(id); err == nil {
+			name = a.Name
+		}
+		res, err := refresher.Refresh(rctx, id, force)
+		var rerr *auth.RefreshError
+		switch {
+		case err == nil && res.Status == auth.RefreshDone:
+			slog.Info("bili cookie refreshed", "name", name, "mid", res.MID, "forced", force)
+			if res.ConfirmErr != nil {
+				slog.Warn("bili cookie refresh: confirm failed (new cookie is live)", "name", name, "step", res.ConfirmErr.Step, "detail", res.ConfirmErr.Detail)
+			}
+		case err == nil:
+			slog.Debug("bili cookie refresh not needed", "name", name)
+		case errors.As(err, &rerr) && rerr.LoginInvalid():
+			slog.Error("bili cookie refresh: login invalid — re-scan QR in admin panel", "name", name, "detail", rerr.Detail)
+			markLoginExpired(name)
+		case errors.As(err, &rerr):
+			slog.Error("bili cookie refresh FAILED — "+rerr.Human(), "name", name, "step", rerr.Step, "detail", rerr.Detail)
+		default:
+			slog.Error("bili cookie refresh failed", "name", name, "err", err)
+		}
+		return res, err
+	}
+
 	// Periodic cookie health check: the 2026-08 outage went unnoticed for
 	// weeks because nothing ever re-verified stored cookies. Check at startup
 	// and every 6h; only an explicit isLogin=false marks an account invalid —
 	// network errors are skipped so a flaky connection can't disable bots.
+	// A live cookie is then run through the refresh check, which refreshes it
+	// only when Bilibili's cookie/info says so.
 	checkCookieHealth := func() {
 		accounts, err := authStore.ListBiliAccounts()
 		if err != nil {
@@ -198,18 +257,16 @@ func run(cfgPath string) error {
 				continue
 			}
 			if !alive {
+				_ = authStore.SetBiliRefreshStatus(a.ID, auth.RefreshLoginInvalid, "登录已失效，请在管理面板重新扫码登录该账号",
+					time.Now().Format("2006-01-02 15:04:05"))
 				markLoginExpired(a.Name)
+				continue
 			}
+			rctx, rcancel := context.WithTimeout(ctx, 90*time.Second)
+			refreshAccount(rctx, a.ID, false)
+			rcancel()
 		}
 	}
-	go func() {
-		checkCookieHealth()
-		ticker := time.NewTicker(6 * time.Hour)
-		defer ticker.Stop()
-		for range ticker.C {
-			checkCookieHealth()
-		}
-	}()
 
 	// Transcript logger setup
 	transcriptDir := filepath.Join(filepath.Dir(cfgPath), "transcripts")
@@ -230,12 +287,14 @@ func run(cfgPath string) error {
 
 	// Register callbacks
 	webServer.OnAccountChange(syncDBBots)
+	webServer.SetCookieRefresher(refreshAccount)
 
 	// Danmaku command handlers for streamers with command_uids.
 	// Guarded by mu (mutated on hot reload as streamers are added/removed).
 	type cmdEntry struct {
 		handler *command.Handler
 		cancel  context.CancelFunc
+		account string // bot whose cookie the danmaku listener authenticated with
 	}
 	cmdHandlers := make(map[int64]*cmdEntry) // roomID → handler + its cancel
 
@@ -260,12 +319,15 @@ func run(cfgPath string) error {
 		}
 		// Use 佯攻菲娜 for danmaku listening; fall back to any available bot
 		var dmClient *dm.Client
+		var account string
 		if bb, ok := pool.Get("佯攻菲娜").(*bot.BilibiliBot); ok && bb.Available() {
 			dmClient = dm.NewClient(dm.WithCookie(bb.SESSDATA(), bb.BiliJCT()), dm.WithRoomID(sc.RoomID))
+			account = bb.Name()
 		} else {
 			for _, b := range pool.All() {
 				if bb, ok := b.(*bot.BilibiliBot); ok && bb.Available() {
 					dmClient = dm.NewClient(dm.WithCookie(bb.SESSDATA(), bb.BiliJCT()), dm.WithRoomID(sc.RoomID))
+					account = bb.Name()
 					break
 				}
 			}
@@ -280,7 +342,7 @@ func run(cfgPath string) error {
 		if as, ok := active[sc.RoomID]; ok && as.ctrl != nil {
 			h.SetController(as.ctrl)
 		}
-		cmdHandlers[sc.RoomID] = &cmdEntry{handler: h, cancel: hcancel}
+		cmdHandlers[sc.RoomID] = &cmdEntry{handler: h, cancel: hcancel, account: account}
 		go func(roomID int64, client *dm.Client, handler *command.Handler) {
 			go handler.Run(hctx)
 			if err := client.Start(hctx); err != nil && hctx.Err() == nil {
@@ -304,6 +366,39 @@ func run(cfgPath string) error {
 		startCmdHandler(sc)
 	}
 	mu.Unlock()
+
+	// The danmaku websocket captures its cookie at connect time (and reuses it
+	// on reconnect), so a refreshed account's listeners are restarted.
+	restartCmdHandlersFor = func(account string) {
+		mu.Lock()
+		defer mu.Unlock()
+		cur := hotCfg.Get()
+		for rid, e := range cmdHandlers {
+			if e.account != account {
+				continue
+			}
+			sc := cur.FindStreamerByRoom(rid)
+			stopCmdHandler(rid)
+			if sc != nil {
+				startCmdHandler(*sc)
+			}
+			slog.Info("command handler restarted with refreshed cookie", "room", rid, "account", account)
+		}
+	}
+
+	go func() {
+		checkCookieHealth()
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				checkCookieHealth()
+			}
+		}
+	}()
 
 	// Monitor live status for all streamers (created early for hot reload access)
 	mon := stream.NewMonitor(stream.WithMonitorInterval(30 * time.Second))

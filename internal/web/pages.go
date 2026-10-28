@@ -1032,13 +1032,18 @@ async function loadBiliAccounts() {
     maxInput.style.cssText = 'width:60px;padding:4px;border:1px solid #333;border-radius:4px;background:#0f3460;color:#eee;font-size:13px;';
     maxInput.onchange = function() { updateBiliMax(a.id, this.value, this); };
 
-    var actions = makeBtn(t('delete'), 'small-btn danger', function() { deleteBiliAccount(a.id, a.name); });
+    var actions = document.createElement('span');
+    if (a.valid && a.has_refresh_token) {
+      actions.appendChild(makeBtn(t('refresh_now'), 'small-btn', function() { refreshBiliAccount(a.id, this); }));
+      actions.appendChild(document.createTextNode(' '));
+    }
+    actions.appendChild(makeBtn(t('delete'), 'small-btn danger', function() { deleteBiliAccount(a.id, a.name); }));
 
     var timeEl = document.createElement('span');
     timeEl.style.cssText = 'font-size:12px;color:#aaa;';
     timeEl.textContent = a.created_at || '';
 
-    return [a.name, String(a.uid || '-'), maxInput, timeEl, statusEl, actions];
+    return [a.name, String(a.uid || '-'), maxInput, timeEl, statusEl, biliRefreshCell(a), actions];
   });
   if (rows.length === 0) {
     var p = document.createElement('p');
@@ -1047,7 +1052,52 @@ async function loadBiliAccounts() {
     container.appendChild(p);
     return;
   }
-  container.appendChild(buildTable([t('name'), t('uid'), t('danmaku_max'), t('created_at'), t('status'), t('actions')], rows));
+  container.appendChild(buildTable([t('name'), t('uid'), t('danmaku_max'), t('created_at'), t('status'), t('auto_refresh'), t('actions')], rows));
+}
+
+// Cookie auto-refresh status cell: state + last check/refresh time; the error
+// text (failed step, never secrets) goes in the tooltip and a second line.
+function biliRefreshCell(a) {
+  var el = document.createElement('div');
+  el.style.cssText = 'font-size:12px;';
+  var st = document.createElement('span');
+  var label, color = '#aaa';
+  if (!a.has_refresh_token) { label = t('rf_no_token'); color = '#f0a500'; }
+  else if (a.refresh_status === 'refreshed') { label = t('rf_refreshed'); color = '#4ecca3'; }
+  else if (a.refresh_status === 'not-needed') { label = t('rf_not_needed'); color = '#4ecca3'; }
+  else if (a.refresh_status === 'failed') { label = t('rf_failed'); color = '#e94560'; }
+  else if (a.refresh_status === 'login-invalid') { label = t('rf_login_invalid'); color = '#e94560'; }
+  else { label = t('rf_ok'); }
+  st.textContent = label;
+  st.style.color = color;
+  el.appendChild(st);
+  var when = a.refreshed_at || a.refresh_checked_at;
+  if (when) {
+    var w = document.createElement('div');
+    w.style.color = '#888';
+    w.textContent = when;
+    el.appendChild(w);
+  }
+  if (a.refresh_error) {
+    el.title = a.refresh_error;
+    var e = document.createElement('div');
+    e.style.cssText = 'color:#e94560;max-width:260px;white-space:normal;';
+    e.textContent = a.refresh_error;
+    el.appendChild(e);
+  }
+  return el;
+}
+
+async function refreshBiliAccount(id, btn) {
+  if (!confirm(t('confirm_refresh'))) return;
+  if (btn) btn.disabled = true;
+  try {
+    var res = await fetch('/api/admin/bili-account/refresh?id=' + id + '&force=1', {method: 'POST'});
+    var d = await res.json();
+    if (d.status === 'failed') alert(t('rf_failed') + ': ' + (d.error || ''));
+    else alert(t('rf_done') + (d.status === 'refreshed' ? t('rf_refreshed') : t('rf_not_needed')) + (d.warning ? '\n' + d.warning : ''));
+  } catch (e) { alert(t('rf_failed')); }
+  loadBiliAccounts();
 }
 
 async function updateBiliMax(id, val, inputEl) {

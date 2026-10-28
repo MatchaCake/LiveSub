@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"time"
 )
 
@@ -20,6 +21,20 @@ type BiliAccount struct {
 	CreatedAt  string `json:"created_at"`
 	ExpiresAt  string `json:"expires_at,omitempty"`
 	Valid      bool   `json:"valid"` // whether cookies are still working
+	// RefreshToken is the web login refresh_token (QR login data.refresh_token),
+	// needed for the official cookie refresh flow. Same at-rest protection as
+	// the cookies (users.db, 0600). Never log or return it from the API.
+	RefreshToken string `json:"-"`
+	BiliRefreshState
+}
+
+// BiliRefreshState is the cookie auto-refresh status shown in the admin panel.
+type BiliRefreshState struct {
+	HasRefreshToken  bool   `json:"has_refresh_token"`
+	RefreshStatus    string `json:"refresh_status"`     // "", not-needed, refreshed, failed, no-token, login-invalid
+	RefreshError     string `json:"refresh_error"`      // human-readable failed step (never contains secrets)
+	RefreshCheckedAt string `json:"refresh_checked_at"` // last cookie/info check
+	RefreshedAt      string `json:"refreshed_at"`       // last successful refresh
 }
 
 // BiliAccountSummary is the safe version without credentials.
@@ -31,6 +46,7 @@ type BiliAccountSummary struct {
 	CreatedAt  string `json:"created_at"`
 	ExpiresAt  string `json:"expires_at,omitempty"`
 	Valid      bool   `json:"valid"`
+	BiliRefreshState
 }
 
 func (s *Store) migrateBili() error {
@@ -47,15 +63,92 @@ func (s *Store) migrateBili() error {
 			valid INTEGER NOT NULL DEFAULT 1
 		);
 	`)
+	if err != nil {
+		return err
+	}
+	// Cookie auto-refresh columns (2026-10-28). Added in place so existing
+	// databases keep their accounts; old rows have no refresh_token until the
+	// account is re-scanned once.
+	cols := map[string]bool{}
+	rows, err := s.db.Query(`PRAGMA table_info(bili_accounts)`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		cols[name] = true
+	}
+	rows.Close()
+	for _, col := range []string{"refresh_token", "refresh_status", "refresh_error", "refresh_checked_at", "refreshed_at"} {
+		if cols[col] {
+			continue
+		}
+		if _, err := s.db.Exec(`ALTER TABLE bili_accounts ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add column %s: %w", col, err)
+		}
+	}
+	return nil
+}
+
+const biliAccountCols = `id, name, sessdata, bili_jct, uid, danmaku_max, created_at, COALESCE(expires_at,''), valid,
+	refresh_token, refresh_status, refresh_error, refresh_checked_at, refreshed_at`
+
+type rowScanner interface{ Scan(dest ...any) error }
+
+func scanBiliAccount(r rowScanner) (*BiliAccount, error) {
+	var a BiliAccount
+	if err := r.Scan(&a.ID, &a.Name, &a.SESSDATA, &a.BiliJCT, &a.UID, &a.DanmakuMax, &a.CreatedAt, &a.ExpiresAt, &a.Valid,
+		&a.RefreshToken, &a.RefreshStatus, &a.RefreshError, &a.RefreshCheckedAt, &a.RefreshedAt); err != nil {
+		return nil, err
+	}
+	a.HasRefreshToken = a.RefreshToken != ""
+	return &a, nil
+}
+
+// GetBiliAccount returns one account (with credentials) by ID.
+func (s *Store) GetBiliAccount(id int64) (*BiliAccount, error) {
+	return scanBiliAccount(s.db.QueryRow(`SELECT `+biliAccountCols+` FROM bili_accounts WHERE id=?`, id))
+}
+
+// ReplaceBiliCookies swaps in refreshed credentials in a single UPDATE. It is a
+// compare-and-swap on the old SESSDATA: if the row changed meanwhile (QR
+// re-scan, delete) nothing is written and an error is returned, so a refresh
+// can never clobber a newer login.
+func (s *Store) ReplaceBiliCookies(id int64, oldSessdata, sessdata, biliJCT, refreshToken, refreshedAt string) error {
+	res, err := s.db.Exec(
+		`UPDATE bili_accounts SET sessdata=?, bili_jct=?, refresh_token=?, refreshed_at=?, valid=1 WHERE id=? AND sessdata=?`,
+		sessdata, biliJCT, refreshToken, refreshedAt, id, oldSessdata,
+	)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return fmt.Errorf("account %d changed during refresh", id)
+	}
+	return nil
+}
+
+// SetBiliRefreshStatus records the outcome of the last refresh check.
+func (s *Store) SetBiliRefreshStatus(id int64, status, errText, checkedAt string) error {
+	_, err := s.db.Exec(`UPDATE bili_accounts SET refresh_status=?, refresh_error=?, refresh_checked_at=? WHERE id=?`,
+		status, errText, checkedAt, id)
 	return err
 }
 
-// SaveBiliAccount inserts or updates a Bilibili account.
-func (s *Store) SaveBiliAccount(name, sessdata, biliJCT string, uid int64, danmakuMax int, expiresAt string) (*BiliAccount, error) {
+// SaveBiliAccount inserts or updates a Bilibili account. refreshToken may be
+// empty (older callers); a QR login always supplies it.
+func (s *Store) SaveBiliAccount(name, sessdata, biliJCT, refreshToken string, uid int64, danmakuMax int, expiresAt string) (*BiliAccount, error) {
 	// Update if same name exists
 	res, err := s.db.Exec(
-		`UPDATE bili_accounts SET sessdata=?, bili_jct=?, uid=?, danmaku_max=?, expires_at=?, valid=1 WHERE name=?`,
-		sessdata, biliJCT, uid, danmakuMax, expiresAt, name,
+		`UPDATE bili_accounts SET sessdata=?, bili_jct=?, refresh_token=?, uid=?, danmaku_max=?, expires_at=?, valid=1,
+			refresh_status='', refresh_error='' WHERE name=?`,
+		sessdata, biliJCT, refreshToken, uid, danmakuMax, expiresAt, name,
 	)
 	if err != nil {
 		return nil, err
@@ -68,34 +161,23 @@ func (s *Store) SaveBiliAccount(name, sessdata, biliJCT string, uid int64, danma
 
 	// Insert new
 	r, err := s.db.Exec(
-		`INSERT INTO bili_accounts (name, sessdata, bili_jct, uid, danmaku_max, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		name, sessdata, biliJCT, uid, danmakuMax, expiresAt,
+		`INSERT INTO bili_accounts (name, sessdata, bili_jct, refresh_token, uid, danmaku_max, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		name, sessdata, biliJCT, refreshToken, uid, danmakuMax, expiresAt,
 	)
 	if err != nil {
 		return nil, err
 	}
 	id, _ := r.LastInsertId()
-	return &BiliAccount{ID: id, Name: name, SESSDATA: sessdata, BiliJCT: biliJCT, UID: uid, DanmakuMax: danmakuMax, Valid: true}, nil
+	return s.GetBiliAccount(id)
 }
 
 func (s *Store) getBiliAccountByName(name string) (*BiliAccount, error) {
-	var a BiliAccount
-	var expiresAt sql.NullString
-	err := s.db.QueryRow(
-		`SELECT id, name, sessdata, bili_jct, uid, danmaku_max, created_at, expires_at, valid FROM bili_accounts WHERE name=?`, name,
-	).Scan(&a.ID, &a.Name, &a.SESSDATA, &a.BiliJCT, &a.UID, &a.DanmakuMax, &a.CreatedAt, &expiresAt, &a.Valid)
-	if err != nil {
-		return nil, err
-	}
-	if expiresAt.Valid {
-		a.ExpiresAt = expiresAt.String
-	}
-	return &a, nil
+	return scanBiliAccount(s.db.QueryRow(`SELECT `+biliAccountCols+` FROM bili_accounts WHERE name=?`, name))
 }
 
 // ListBiliAccounts returns all accounts (with credentials).
 func (s *Store) ListBiliAccounts() ([]BiliAccount, error) {
-	rows, err := s.db.Query(`SELECT id, name, sessdata, bili_jct, uid, danmaku_max, created_at, COALESCE(expires_at,''), valid FROM bili_accounts ORDER BY id`)
+	rows, err := s.db.Query(`SELECT ` + biliAccountCols + ` FROM bili_accounts ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -103,32 +185,27 @@ func (s *Store) ListBiliAccounts() ([]BiliAccount, error) {
 
 	var accounts []BiliAccount
 	for rows.Next() {
-		var a BiliAccount
-		if err := rows.Scan(&a.ID, &a.Name, &a.SESSDATA, &a.BiliJCT, &a.UID, &a.DanmakuMax, &a.CreatedAt, &a.ExpiresAt, &a.Valid); err != nil {
+		a, err := scanBiliAccount(rows)
+		if err != nil {
 			return nil, err
 		}
-		accounts = append(accounts, a)
+		accounts = append(accounts, *a)
 	}
-	return accounts, nil
+	return accounts, rows.Err()
 }
 
 // ListBiliAccountSummaries returns accounts without credentials.
 func (s *Store) ListBiliAccountSummaries() ([]BiliAccountSummary, error) {
-	rows, err := s.db.Query(`SELECT id, name, uid, danmaku_max, created_at, COALESCE(expires_at,''), valid FROM bili_accounts ORDER BY id`)
+	accounts, err := s.ListBiliAccounts()
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var accounts []BiliAccountSummary
-	for rows.Next() {
-		var a BiliAccountSummary
-		if err := rows.Scan(&a.ID, &a.Name, &a.UID, &a.DanmakuMax, &a.CreatedAt, &a.ExpiresAt, &a.Valid); err != nil {
-			return nil, err
-		}
-		accounts = append(accounts, a)
+	out := make([]BiliAccountSummary, 0, len(accounts))
+	for _, a := range accounts {
+		out = append(out, BiliAccountSummary{ID: a.ID, Name: a.Name, UID: a.UID, DanmakuMax: a.DanmakuMax,
+			CreatedAt: a.CreatedAt, ExpiresAt: a.ExpiresAt, Valid: a.Valid, BiliRefreshState: a.BiliRefreshState})
 	}
-	return accounts, nil
+	return out, nil
 }
 
 // SetBiliAccountValid flips the stored validity flag. Marking an account
@@ -224,15 +301,19 @@ func GenerateQRCode() (*QRCodeResult, error) {
 
 // QRPollResult represents the status of a QR login poll.
 type QRPollResult struct {
-	Status   string `json:"status"`   // "waiting", "scanned", "confirmed", "expired"
-	SESSDATA string `json:"sessdata,omitempty"`
-	BiliJCT  string `json:"bili_jct,omitempty"`
-	UID      int64  `json:"uid,omitempty"`
+	Status       string `json:"status"` // "waiting", "scanned", "confirmed", "expired"
+	SESSDATA     string `json:"-"`
+	BiliJCT      string `json:"-"`
+	RefreshToken string `json:"-"`
+	UID          int64  `json:"uid,omitempty"`
 }
+
+// qrPollURL is a var so tests can point it at a fake server.
+var qrPollURL = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll"
 
 // PollQRCode checks login status and extracts cookies on success.
 func PollQRCode(qrcodeKey string) (*QRPollResult, error) {
-	url := fmt.Sprintf("https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key=%s", qrcodeKey)
+	url := qrPollURL + "?qrcode_key=" + neturl.QueryEscape(qrcodeKey)
 
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -254,10 +335,11 @@ func PollQRCode(qrcodeKey string) (*QRPollResult, error) {
 	var result struct {
 		Code int `json:"code"`
 		Data struct {
-			Code      int    `json:"code"`
-			Message   string `json:"message"`
-			URL       string `json:"url"`
-			Timestamp int64  `json:"timestamp"`
+			Code         int    `json:"code"`
+			Message      string `json:"message"`
+			URL          string `json:"url"`
+			RefreshToken string `json:"refresh_token"`
+			Timestamp    int64  `json:"timestamp"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
@@ -289,10 +371,11 @@ func PollQRCode(qrcodeKey string) (*QRPollResult, error) {
 			return nil, fmt.Errorf("login succeeded but cookies not found in response")
 		}
 		return &QRPollResult{
-			Status:   "confirmed",
-			SESSDATA: sessdata,
-			BiliJCT:  biliJCT,
-			UID:      uid,
+			Status:       "confirmed",
+			SESSDATA:     sessdata,
+			BiliJCT:      biliJCT,
+			RefreshToken: result.Data.RefreshToken,
+			UID:          uid,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unknown status code %d: %s", result.Data.Code, result.Data.Message)
