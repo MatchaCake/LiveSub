@@ -141,14 +141,19 @@ func (s *Store) SetBiliRefreshStatus(id int64, status, errText, checkedAt string
 	return err
 }
 
-// SaveBiliAccount inserts or updates a Bilibili account. refreshToken may be
+// SaveBiliAccount inserts or updates a Bilibili account, matched by NAME (the
+// account's current Bilibili nickname at scan time — not by uid: an account
+// that was renamed on Bilibili comes back as a new row). refreshToken may be
 // empty (older callers); a QR login always supplies it.
 func (s *Store) SaveBiliAccount(name, sessdata, biliJCT, refreshToken string, uid int64, danmakuMax int, expiresAt string) (*BiliAccount, error) {
-	// Update if same name exists
+	// Update if same name exists. danmaku_max is deliberately left alone: it is
+	// a per-account setting made in the panel (30 for accounts whose level
+	// allows it), and a QR re-scan — which always passes the default 20 — only
+	// renews the login. danmakuMax applies to newly inserted accounts.
 	res, err := s.db.Exec(
-		`UPDATE bili_accounts SET sessdata=?, bili_jct=?, refresh_token=?, uid=?, danmaku_max=?, expires_at=?, valid=1,
+		`UPDATE bili_accounts SET sessdata=?, bili_jct=?, refresh_token=?, uid=?, expires_at=?, valid=1,
 			refresh_status='', refresh_error='' WHERE name=?`,
-		sessdata, biliJCT, refreshToken, uid, danmakuMax, expiresAt, name,
+		sessdata, biliJCT, refreshToken, uid, expiresAt, name,
 	)
 	if err != nil {
 		return nil, err

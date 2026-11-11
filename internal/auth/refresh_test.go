@@ -460,3 +460,37 @@ func TestMigrateOldSchemaAndPermissions(t *testing.T) {
 	}
 	st2.Close()
 }
+
+// A QR re-scan renews the login of an existing account. It used to reset the
+// account's danmaku length limit to the default 20 as well, so every re-scanned
+// 30-rune account silently went back to shorter, more numerous danmaku.
+func TestRescanKeepsDanmakuMax(t *testing.T) {
+	st, _, _, id := setup(t, "") // old-style account: no refresh_token
+	if err := st.UpdateBiliAccountDanmakuMax(id, 30); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetBiliAccountValid("bot1", false); err != nil {
+		t.Fatal(err)
+	}
+
+	acc, err := st.SaveBiliAccount("bot1", "RESCAN", "J", "NEW-RT", testUID, 20, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acc.ID != id {
+		t.Fatalf("re-scan created a second row: id %d, want %d", acc.ID, id)
+	}
+	got := mustGet(t, st, id)
+	if got.DanmakuMax != 30 {
+		t.Errorf("danmaku_max = %d after re-scan, want 30", got.DanmakuMax)
+	}
+	if !got.Valid || got.SESSDATA != "RESCAN" || got.RefreshToken != "NEW-RT" {
+		t.Errorf("login not renewed: valid=%v", got.Valid)
+	}
+
+	// A brand-new account still gets the caller's default.
+	fresh, err := st.SaveBiliAccount("bot2", "S", "J", "RT", testUID+1, 20, "")
+	if err != nil || fresh.DanmakuMax != 20 {
+		t.Fatalf("new account: %+v, %v", fresh, err)
+	}
+}
