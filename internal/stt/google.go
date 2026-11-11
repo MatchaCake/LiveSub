@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 
 	speech "cloud.google.com/go/speech/apiv1"
 	speechpb "cloud.google.com/go/speech/apiv1/speechpb"
@@ -83,23 +84,62 @@ func (s *GoogleSTT) Stream(ctx context.Context, audioReader io.Reader, results c
 						AudioContent: buf[:n],
 					},
 				}); err != nil {
-					slog.Error("send audio error", "err", err)
+					// io.EOF from Send means the server already ended the
+					// stream — which it does every ~305s (max stream duration).
+					// The real status comes from Recv below; logging this at
+					// ERROR made every routine rotation look like an outage.
+					if err == io.EOF {
+						slog.Debug("audio send stopped: stream closed by server")
+					} else {
+						slog.Error("send audio error", "err", err)
+					}
 					return
 				}
 			}
 		}
 	}()
 
-	// Receive results
+	return receive(ctx, stream.Recv, results, strings.ToLower(s.language))
+}
+
+// receive forwards recognition results until the stream ends. io.EOF (audio
+// source finished) returns nil; any other error is returned wrapped.
+//
+// When the stream is cut by an error — in practice Google's ~305s max stream
+// duration, 12 times an hour — whatever was being said at that moment only
+// exists as an interim hypothesis, and used to be thrown away: the next stream
+// starts with the second half of the sentence (2026-11-11 21:06: 「…の翻訳を
+// 翻訳しないことでした」 with its subject gone). The audio is not replayed to
+// the new stream, so that hypothesis is the only record of those words; it is
+// emitted as a final result instead of being dropped.
+func receive(ctx context.Context, recv func() (*speechpb.StreamingRecognizeResponse, error), results chan<- StreamResult, defaultLang string) error {
+	var interim StreamResult // utterance in progress, not yet finalized by the server
 	for {
-		resp, err := stream.Recv()
+		resp, err := recv()
 		if err == io.EOF {
 			return nil
 		}
 		if err != nil {
+			// Not on shutdown / stream-offline: nobody is left to translate it.
+			if ctx.Err() == nil && strings.TrimSpace(interim.Text) != "" {
+				interim.IsFinal = true
+				if interim.Language == "" {
+					interim.Language = defaultLang
+				}
+				slog.Info("STT stream cut mid-utterance, keeping interim text", "text", interim.Text, "lang", interim.Language)
+				results <- interim
+			}
 			return fmt.Errorf("recv: %w", err)
 		}
+		if len(resp.Results) == 0 {
+			continue // speech events etc.: nothing about the transcript changed
+		}
 
+		// A response holds at most one final result followed by the interim
+		// results for the audio after it; together those interims are the
+		// whole current hypothesis (stable part + unstable tail).
+		var pending strings.Builder
+		pendingLang := ""
 		for _, result := range resp.Results {
 			if len(result.Alternatives) > 0 {
 				alt := result.Alternatives[0]
@@ -112,11 +152,18 @@ func (s *GoogleSTT) Stream(ctx context.Context, audioReader io.Reader, results c
 
 				if sr.IsFinal {
 					slog.Info("STT final", "text", sr.Text, "lang", sr.Language, "confidence", alt.Confidence)
+					pending.Reset()
+				} else {
+					pending.WriteString(alt.Transcript)
+					if pendingLang == "" {
+						pendingLang = sr.Language
+					}
 				}
 
 				results <- sr
 			}
 		}
+		interim = StreamResult{Text: pending.String(), Language: pendingLang}
 	}
 }
 
