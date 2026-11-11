@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -115,16 +116,20 @@ func (a *Agent) runPipeline(ctx context.Context) error {
 		defer func() { sttClient.Close() }() // closes the CURRENT client, not the first
 		sttBackoff := time.Second
 		const maxSTTBackoff = 30 * time.Second
+		// Paces the language-lock watchdog over this pipeline's streams.
+		var lockGuard stt.LockGuard
 
 		for {
 			if ctx.Err() != nil {
 				return
 			}
 			streamStart := time.Now()
+			sttClient.SetLockThreshold(lockGuard.Threshold())
 			err := sttClient.Stream(ctx, pauseReader, resultsCh)
 			if ctx.Err() != nil {
 				return
 			}
+			lockGuard.Observe(err)
 
 			if err == nil {
 				// Stream returned nil = audio reader EOF → ffmpeg died.
@@ -144,6 +149,13 @@ func (a *Agent) runPipeline(ctx context.Context) error {
 				// normal operation, not a failure. Reconnect immediately so
 				// subtitles don't go dark during the wait.
 				slog.Info("STT stream rotated (max duration), reconnecting immediately", "name", sc.Name)
+			} else if errors.Is(err, stt.ErrLanguageLock) {
+				// Google decided this stream was in an alternative language and
+				// it was producing only empty results: a new stream re-detects
+				// the language on fresh audio. No backoff sleep — LockGuard asks
+				// for more evidence each time and gives up after a few in a row.
+				slog.Warn("STT stream was language-locked, reconnecting immediately", "name", sc.Name,
+					"after", time.Since(streamStart).Round(time.Second), "consecutive", lockGuard.Streak())
 			} else {
 				// Real STT error — back off before reconnecting.
 				slog.Warn("STT stream ended, reconnecting...", "name", sc.Name, "err", err, "backoff", sttBackoff)

@@ -132,6 +132,30 @@ used to lose was the utterance in progress, which exists only as interim results
 `stt.receive` now emits that last interim hypothesis as a final result when the
 stream ends with an error (not on audio EOF, not on shutdown).
 
+## STT language lock (2026-11-11) — "subtitles frozen for five minutes"
+
+With `alt_langs` set, Google picks ONE language per streaming session from the first
+audio it hears, and never changes it. In a week of logs 31 of 273 streams came up as
+`cmn-hans-cn` for Japanese speakers (music/singing when the stream started — i.e. at a
+rotation) and none of them ever produced a `ja-jp` result: until the ~305s limit they
+emit only empty finals (`conf=0 text=""`, every 30–60s) plus the odd line of confident
+nonsense (conf 0.9), which — being "already Chinese" — skips translation and goes to
+the room as a subtitle. Viewers see subtitles stop for five minutes.
+
+- Watchdog (`internal/stt`, `ErrLanguageLock`): a stream with no primary-language final
+  is ended at its Nth empty alternative-language final and reconnected at once, so the
+  language is detected again. `LockGuard` (per pipeline) sets N = 1, 2, 3 for
+  consecutive locked streams and then sits one stream out (`maxLockRebuilds`), so a
+  long stretch of music — or a streamer really speaking the alternative language —
+  cannot cause a reconnect loop. Healthy streams are never touched: their empty finals
+  are in the primary language. Logged as WARN `STT stream locked onto alternative
+  language…`. It only shortens an outage (first empty final arrives 10–60s into the
+  stream); it cannot prevent the lock, and nonsense emitted before that final still
+  goes out. STT confidence cannot tell that nonsense from real speech.
+- The actual cure is not listing a language the streamer does not speak: prefer
+  `alt_langs: []` for Japanese-only streamers. Note `alt_langs` is read when the
+  pipeline starts — a config hot reload does not reach a running stream.
+
 ## Translation model selection (measured 2026-07-26, historical)
 
 Then-current: **`gemini-3.1-flash-lite`**. Live subtitles are a sub-second, non-reasoning
