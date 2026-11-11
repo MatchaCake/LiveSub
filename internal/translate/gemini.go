@@ -134,16 +134,10 @@ func (t *GeminiTranslator) Translate(ctx context.Context, text, sourceLang, targ
 		return "", nil
 	}
 
-	prompt := fmt.Sprintf(
-		"Translate the following %s text to %s. "+
-			"Output ONLY the translation, nothing else. "+
-			"Keep it natural and concise (suitable for live stream subtitles). "+
-			"For proper nouns and person names, output their romaji/romanization instead of translating them.\n\n%s",
-		sourceLang, targetLang, text,
-	)
+	prompt := buildPrompt(text, sourceLang, targetLang)
 
 	var (
-		firstResult string // first untranslated-looking result, kept as last resort
+		firstResult string // first rejected-but-usable result, kept as last resort
 		haveResult  bool
 		errs        []error
 	)
@@ -164,24 +158,29 @@ func (t *GeminiTranslator) Translate(ctx context.Context, text, sourceLang, targ
 		}
 		result = strings.TrimSpace(result)
 
-		// Untranslated output (still in source language): try the next model.
-		if looksLikeSource(result, sourceLang, targetLang) {
-			slog.Warn("translation returned source language, trying next model",
-				"model", model, "source", text, "result", result)
-			if !haveResult {
-				firstResult, haveResult = result, true
+		// Untranslated, romanized or model-commentary output: try the next model.
+		if rej := checkResult(text, result, sourceLang, targetLang); rej != nil {
+			slog.Warn("translation rejected, trying next model", "reason", rej.reason,
+				"model", model, "source", text, "result", truncForLog(result))
+			if rej.keep && !haveResult {
+				firstResult, haveResult = singleLine(result), true
+			}
+			if !rej.keep {
+				errs = append(errs, fmt.Errorf("%s: unusable output (%s)", model, rej.reason))
 			}
 			continue
 		}
 
 		t.markOK(model)
+		result = singleLine(result)
 		slog.Debug("translated", "from", text, "to", result, "target", targetLang, "model", model)
 		return result, nil
 	}
 
 	if haveResult {
-		// Every model either failed or still looked untranslated — a
-		// possibly-wrong-language subtitle is better than dropping the line.
+		// Every model either failed or still looked untranslated/romanized — a
+		// possibly-wrong-script subtitle is better than dropping the line.
+		// (Model commentary is never kept: that line is dropped instead.)
 		return firstResult, nil
 	}
 	if len(errs) == 0 && ctx.Err() != nil {
@@ -263,6 +262,15 @@ func (t *GeminiTranslator) markOK(model string) {
 	if switched {
 		slog.Info("translate model active", "model", model, "chain", t.models)
 	}
+}
+
+// truncForLog keeps a runaway model reply from flooding the log.
+func truncForLog(s string) string {
+	r := []rune(s)
+	if len(r) <= 80 {
+		return s
+	}
+	return string(r[:80]) + "…"
 }
 
 // looksLikeSource checks if the translation result is still in the source language.
