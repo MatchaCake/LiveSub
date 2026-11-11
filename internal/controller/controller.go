@@ -45,6 +45,12 @@ type OutputState struct {
 	LastText   string       `json:"last_text"`
 	Pending    []PendingMsg `json:"pending"` // messages waiting to send
 	Recent     []string     `json:"recent"`  // last N sent messages
+	// Account health, recomputed on every read (see AccountHealth). The panel
+	// used to show an output as "翻译中" while every one of its accounts had an
+	// expired cookie and each line was silently dropped.
+	UsableBots []string `json:"usable_bots"` // accounts that can send right now
+	DeadBots   []string `json:"dead_bots"`   // configured accounts that cannot (login expired / never logged in)
+	NoAccounts bool     `json:"no_accounts"` // no configured account can send: nothing reaches the room
 }
 
 const maxRecent = 5
@@ -68,6 +74,9 @@ type Controller struct {
 	// revoked server-side, so every later send with it is a guaranteed failure.
 	onLoginExpired func(bot string)
 	rrIndex    map[string]int // output name → round-robin index for account pool
+	// output name → last logged account-health signature, so a dead account
+	// is reported when it dies / recovers instead of on every subtitle line.
+	acctHealth map[string]string
 	// output name → time we were muted (1003) in its room; suspends sending so
 	// we stop compounding the penalty. Self-clears after muteBreakerTTL.
 	mutedOutputs map[string]time.Time
@@ -149,6 +158,7 @@ func New(pool *bot.Pool, outputs []config.OutputConfig, tlog *transcript.Logger,
 		outputStates:   states,
 		skipSet:        make(map[int64]bool),
 		rrIndex:        make(map[string]int),
+		acctHealth:     make(map[string]string),
 		sendDelay:      3 * time.Second,
 		ch:             make(chan Translation, 100),
 		done:           make(chan struct{}),
@@ -335,6 +345,8 @@ func (c *Controller) OutputStates() []OutputState {
 			}
 			cp.Recent = make([]string, len(s.Recent))
 			copy(cp.Recent, s.Recent)
+			cp.UsableBots, cp.DeadBots = AccountHealth(c.pool, o.AccountPool())
+			cp.NoAccounts = len(cp.UsableBots) == 0
 			out = append(out, cp)
 		}
 	}
@@ -643,11 +655,16 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 	}
 	o := &oCopy
 
-	// Pick bot via round-robin from account pool
+	// Only accounts that can actually send take part in the rotation. A dead
+	// account (cookie expired → dropped from / blanked in the pool) used to
+	// keep its round-robin slot: every line whose turn landed on it was lost
+	// with a "bot not found" WARN — 300–1000 a night for an output whose only
+	// account was dead, and every other line for a half-dead pool.
 	accts := o.AccountPool()
-	if len(accts) == 0 {
-		slog.Warn("no accounts for output", "output", dm.output)
-		return
+	usable, dead := AccountHealth(c.pool, accts)
+	c.noteAccountHealth(dm.output, usable, dead)
+	if len(usable) == 0 {
+		return // reported once by noteAccountHealth and shown in the panel
 	}
 
 	targetRoom := o.RoomID
@@ -660,9 +677,9 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 		prefix += seqEmojis[dm.seqNum%len(seqEmojis)]
 	}
 
-	// Use minimum maxLen across all pool bots so chunks fit any bot
+	// Use minimum maxLen across the usable bots so chunks fit any of them
 	minMax := 0
-	for _, name := range accts {
+	for _, name := range usable {
 		if pb := c.pool.Get(name); pb != nil {
 			if ml := pb.MaxMessageLen(); ml > 0 && (minMax <= 0 || ml < minMax) {
 				minMax = ml
@@ -672,36 +689,43 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 
 	chunks := splitWithWrap(dm.text, prefix, o.Suffix, minMax)
 	sent := false
+chunkLoop:
 	for _, chunk := range chunks {
-		// Round-robin: pick next bot for each chunk
-		c.mu.Lock()
-		idx := c.rrIndex[dm.output] % len(accts)
-		c.rrIndex[dm.output] = (idx + 1) % len(accts)
-		c.mu.Unlock()
+		// Round-robin over the usable accounts. A bot whose login turns out to
+		// be revoked (-101) hands the same chunk to the next one, so at most
+		// len(usable) attempts per chunk.
+		delivered := false
+		for attempt := 0; attempt < len(usable) && !delivered; attempt++ {
+			c.mu.Lock()
+			idx := c.rrIndex[dm.output] % len(usable)
+			c.rrIndex[dm.output] = (idx + 1) % len(usable)
+			c.mu.Unlock()
 
-		b := c.pool.Get(accts[idx])
-		if b == nil {
-			slog.Warn("bot not found", "output", dm.output, "bot", accts[idx])
-			continue
-		}
-		slog.Info("sending", "output", dm.output, "bot", b.Name(), "room", targetRoom, "text", chunk)
-		err := b.Send(ctx, targetRoom, chunk)
-		// Bilibili rate limit (10031 频率过快): retrying the SAME chunk is what
-		// escalated a degenerate translation into a room-wide mute on 2026-07-26
-		// — each retry adds to the very frequency that is being limited. Subtitles
-		// are time-sensitive, so back off once and DROP; the next line is worth
-		// more than a late one.
-		if err != nil && isRateLimited(err) {
-			slog.Warn("danmaku rate limited, backing off and dropping chunk",
-				"output", dm.output, "bot", b.Name())
-			select {
-			case <-time.After(rateLimitBackoff):
-			case <-ctx.Done():
-				return
+			b := c.pool.Get(usable[idx])
+			if b == nil || !b.Available() {
+				continue // went away since the health snapshot
 			}
-			break
-		}
-		if err != nil {
+			slog.Info("sending", "output", dm.output, "bot", b.Name(), "room", targetRoom, "text", chunk)
+			err := b.Send(ctx, targetRoom, chunk)
+			if err == nil {
+				delivered = true
+				break
+			}
+			// Bilibili rate limit (10031 频率过快): retrying the SAME chunk is what
+			// escalated a degenerate translation into a room-wide mute on 2026-07-26
+			// — each retry adds to the very frequency that is being limited. Subtitles
+			// are time-sensitive, so back off once and DROP; the next line is worth
+			// more than a late one.
+			if isRateLimited(err) {
+				slog.Warn("danmaku rate limited, backing off and dropping chunk",
+					"output", dm.output, "bot", b.Name())
+				select {
+				case <-time.After(rateLimitBackoff):
+				case <-ctx.Done():
+					return
+				}
+				break chunkLoop
+			}
 			// 1003 (被禁言) is terminal for this room — keep sending and every
 			// later line just burns quota and prolongs the penalty. Trip a
 			// breaker so the whole output stops until an operator intervenes.
@@ -714,7 +738,8 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 			// -101 (账号未登录) is terminal for this bot everywhere — the cookie
 			// is dead, not the room. Report it so the account can be flagged in
 			// the panel instead of failing silently for months (2026-08-22: all
-			// ten cookies had expired and the panel still showed 有效/已发送).
+			// ten cookies had expired and the panel still showed 有效/已发送),
+			// and let the next account carry this chunk.
 			if isLoggedOut(err) {
 				slog.Error("bot login expired — cookie revoked, re-scan QR in admin panel",
 					"output", dm.output, "bot", b.Name(), "err", err)
@@ -724,10 +749,13 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 				if fn != nil {
 					go fn(b.Name())
 				}
-				break
+				continue
 			}
 			slog.Error("send failed", "output", dm.output, "bot", b.Name(), "err", err)
-			break
+			break chunkLoop
+		}
+		if !delivered {
+			break // no account could take this chunk: don't send a torn message
 		}
 		sent = true
 	}
@@ -745,6 +773,54 @@ func (c *Controller) sendMessage(ctx context.Context, dm delayedMsg) {
 		}
 	}
 	c.mu.Unlock()
+}
+
+// AccountHealth splits an output's configured accounts into those that can
+// send right now and those that cannot. An account is dead when it is missing
+// from the pool (never logged in, or marked invalid before startup) or present
+// but blanked (cookie expired while running — see syncDBBots in main.go).
+// Order is preserved so round-robin stays stable.
+func AccountHealth(pool *bot.Pool, accounts []string) (usable, dead []string) {
+	usable = make([]string, 0, len(accounts))
+	dead = make([]string, 0)
+	for _, name := range accounts {
+		if pool != nil {
+			if b := pool.Get(name); b != nil && b.Available() {
+				usable = append(usable, name)
+				continue
+			}
+		}
+		dead = append(dead, name)
+	}
+	return usable, dead
+}
+
+// noteAccountHealth logs an output's account health when it CHANGES — never
+// per line. The panel reads the same state through OutputStates.
+func (c *Controller) noteAccountHealth(output string, usable, dead []string) {
+	sig := strings.Join(dead, "\x00")
+	if len(usable) == 0 {
+		sig = "none:" + sig
+	}
+	c.mu.Lock()
+	prev, seen := c.acctHealth[output]
+	c.acctHealth[output] = sig
+	c.mu.Unlock()
+	if seen && prev == sig {
+		return
+	}
+	switch {
+	case len(usable) == 0:
+		slog.Error("output has no usable account — its subtitles are NOT being sent until an account is re-scanned in the admin panel",
+			"output", output, "dead", dead)
+	case len(dead) > 0:
+		slog.Warn("output is skipping dead accounts", "output", output, "dead", dead, "usable", usable)
+	case seen:
+		slog.Info("output accounts recovered", "output", output, "usable", usable)
+	default:
+		return // healthy from the start: nothing to report, nothing changed
+	}
+	c.notifyChange()
 }
 
 // isLoggedOut reports whether err is Bilibili's "account not logged in"

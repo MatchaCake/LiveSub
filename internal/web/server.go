@@ -626,6 +626,9 @@ func (s *Server) streamerStates(filterRooms map[int64]bool) []StreamerState {
 				if rt != nil {
 					paused = rt.paused[o.Name]
 				}
+				// Same account health the live controller reports, so a dead
+				// output is visible before the stream starts, not after.
+				usable, dead := controller.AccountHealth(s.pool, o.AccountPool())
 				state.Outputs[i] = controller.OutputState{
 					Name:       o.Name,
 					Platform:   o.Platform,
@@ -635,6 +638,9 @@ func (s *Server) streamerStates(filterRooms map[int64]bool) []StreamerState {
 					Paused:     paused,
 					ShowSeq:    o.ShowSeq,
 					AutoStart:  o.AutoStart,
+					UsableBots: usable,
+					DeadBots:   dead,
+					NoAccounts: len(usable) == 0,
 				}
 			}
 		}
@@ -1262,6 +1268,9 @@ func (s *Server) notifyAccountChange() {
 	if s.onAccountChange != nil {
 		s.onAccountChange()
 	}
+	// Output cards carry account health (无可用账号 / N 个账号失效): refresh
+	// them as soon as an account is scanned, deleted or refreshed.
+	s.BroadcastStatus()
 }
 
 // --- Admin Streamer Management ---

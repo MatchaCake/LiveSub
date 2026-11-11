@@ -97,6 +97,10 @@ const indexHTML = `<!DOCTYPE html>
   .output-text { font-size: 13px; color: #ccc; min-height: 30px; margin-bottom: 10px; word-break: break-all; }
   .badge-translating { background: #16213e; }
   .badge-paused { background: #e9a045; color: #000; }
+  .badge-noacct { background: #ff3b3b; color: #fff; }
+  .badge-deadacct { background: #e9a045; color: #000; }
+  .output-card.noacct { outline: 2px solid #ff3b3b; }
+  .acct-warn { font-size: 12px; color: #ffb3b3; margin: -8px 0 10px; word-break: break-all; }
   .btn { width: 100%; padding: 10px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: bold; transition: all 0.2s; }
   .btn-pause { background: #e94560; color: #fff; }
   .btn-resume { background: #4ecca3; color: #000; }
@@ -226,7 +230,24 @@ function renderStatus(data) {
         ob.className = 'badge ' + (o.paused ? 'badge-paused' : 'badge-translating');
         ob.textContent = o.paused ? t('paused') : t('translating');
         os.appendChild(ob);
+        // Account health: an output whose accounts are all dead sends nothing,
+        // whatever the badge on its left says.
+        var deadBots = o.dead_bots || [];
+        if (o.no_accounts || deadBots.length > 0) {
+          var ab = document.createElement('span');
+          ab.className = 'badge ' + (o.no_accounts ? 'badge-noacct' : 'badge-deadacct');
+          ab.textContent = o.no_accounts ? t('no_accounts') : ('⚠ ' + deadBots.length + t('dead_accounts_suffix'));
+          os.appendChild(ab);
+        }
         oc.appendChild(os);
+        if (o.no_accounts || deadBots.length > 0) {
+          if (o.no_accounts) oc.className += ' noacct';
+          var aw = document.createElement('div');
+          aw.className = 'acct-warn';
+          aw.textContent = (o.no_accounts ? t('no_accounts_hint') : t('dead_accounts_hint')) +
+            (deadBots.length > 0 ? ' ' + t('dead_accounts_list') + ' ' + deadBots.join(', ') : '');
+          oc.appendChild(aw);
+        }
 
         // Pending messages (delay queue)
         if (o.pending && o.pending.length > 0) {
