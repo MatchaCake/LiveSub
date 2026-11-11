@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/christian-lee/livesub/internal/bot"
 	"github.com/christian-lee/livesub/internal/config"
@@ -876,17 +877,44 @@ func splitWithWrap(text, prefix, suffix string, maxLen int) []string {
 			}
 			break
 		}
-		breakAt := end
+		breakAt := -1
 		for j := end - 1; j > i+contentMax/2; j-- {
 			if runes[j] == ' ' || runes[j] == '、' || runes[j] == '，' || runes[j] == '。' {
 				breakAt = j + 1
 				break
 			}
 		}
+		if breakAt < 0 {
+			// No natural break in the window: cut at the limit — but never
+			// through a Latin word / number ("Hei|sei", "2|.5", "OK|!!"). Back up
+			// to where that token starts. A token longer than a whole chunk
+			// can't be kept intact and is cut at the limit after all.
+			breakAt = end
+			if isTokenRune(runes[end-1]) && isTokenRune(runes[end]) {
+				start := end - 1
+				for start > i && isTokenRune(runes[start-1]) {
+					start--
+				}
+				if start > i {
+					breakAt = start
+				}
+			}
+		}
 		chunks = append(chunks, prefix+string(runes[i:breakAt])+suffix)
 		i = breakAt
 	}
 	return chunks
+}
+
+// isTokenRune reports whether r belongs to a run that must stay in one danmaku:
+// Latin letters, digits and the ASCII punctuation glued to them (2.5, 1,000,
+// 21:30, don't, Butter-Fly, OK!!). CJK text and full-width punctuation can be
+// cut anywhere, as before.
+func isTokenRune(r rune) bool {
+	if r > ' ' && r < 0x7F {
+		return true // printable ASCII except space
+	}
+	return r >= 0x80 && unicode.Is(unicode.Latin, r) // é, ç, ō …
 }
 
 // seqEmojis are number emojis 0-10 for message sequence display.
