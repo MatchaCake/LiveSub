@@ -70,13 +70,67 @@ translation:
 `internal/translate` tries the chain in order per line. Any failure (error, 10s
 per-attempt timeout, 429/503, 404 unknown model) puts that model on a 30s cooldown
 and the next one is tried; cooling models are moved to the back, not removed.
-Untranslated-looking output also falls through to the next model. Every call sends
+Rejected output (see "Translation prompt & output checks") also falls through to the
+next model. Every call sends
 `thinkingBudget: 0` (a model that rejects it is remembered and called without it).
 Measured 2026-10-14 on the line below, thinking off: 3.8 1.64s / 3.7 1.95s /
 3.6 1.41s, all render 「少し」 as "差一点". With thinking on (SDK default) the same
 models take 6–19s — never deploy a 3.x model without `thinkingBudget: 0`.
 The model in use is logged at Info as `translate model active` whenever it changes.
 The translator is built at startup: model changes need a service restart.
+
+## Translation prompt & output checks (2026-11-11)
+
+The prompt lives in `internal/translate/prompt.go` (hard-coded: changing it needs a
+deploy, it is not hot-reloadable). For Chinese targets it forbids romanization:
+proper nouns use their Chinese name, kanji names keep their characters (平成 → 平成,
+聖闘士星矢 → 圣斗士星矢), katakana is translated by meaning, and a name with no
+Chinese form stays in the source script. The 2026-02 rule "output proper nouns as
+romaji" is gone for Chinese — it put Heisei / Saint Seiya / Itoman / Danchou into
+10–20% of all subtitle lines on every stream since February (not a model regression:
+3.8/3.7/3.6 all obeyed it). Non-Chinese targets keep the old rule.
+
+Measured 2026-11-11 on 48 real lines from that night (thinking off, same key):
+lines containing Latin words absent from the source — old prompt 3.8: 32/48; new
+prompt 3.8: 4/48, 3.7: 2/48, 3.6: 2/48 (what remains is English like "Fire Bomber").
+Latency p50/p90: 3.8 old 2.14/2.98s → new 2.06/2.73s; 3.7 new 2.00/2.70s; 3.6 new
+1.17/1.53s. 3.6 is the fastest but the least faithful (drops or rewrites names,
+invents words), so the order stays 3.8 → 3.7 → 3.6.
+
+`internal/translate/quality.go` rejects a reply and tries the next model when it is
+(a) still in the source language or pure Latin for a non-Latin source, (b) Chinese
+containing a Hepburn-romanized Japanese word (`isHepburn`; English titles such as
+"SLAM DUNK" are not valid Hepburn and pass), or (c) model commentary — longer than
+3×source+20 runes (2026-11-07: 「櫓が？」 came back as 700 runes of "Depending on
+context… Let's choose…" and went out as ~40 danmaku; the rule has zero false
+positives on 63k historical lines). If every model is rejected the first (a)/(b)
+answer is still sent; commentary never is. Logged as `translation rejected, trying
+next model reason=…`.
+
+## Danmaku splitting
+
+`splitWithWrap` never cuts inside a run of Latin letters / digits / ASCII punctuation
+(`Heisei`, `2.5`, `1,000`, `21:30`, `OK!!`): the whole token moves to the next danmaku.
+Only a token longer than one danmaku is cut.
+
+## Outputs with dead accounts (2026-11-11)
+
+An account is dead when it is absent from the bot pool or blanked (cookie expired).
+`controller.AccountHealth` is the single definition; `sendMessage` rotates over the
+usable accounts only, and a `-101` hands the chunk to the next account. An output
+with no usable account sends nothing: it logs ONE error when that starts (and one
+info when it recovers) instead of a `bot not found` WARN per line, and the panel
+shows a red 「无可用账号」 badge on the output card, live or offline (`usable_bots` /
+`dead_bots` / `no_accounts` in `/api/status`). Partially dead pools show
+「N 个账号失效」. Nothing is auto-paused: after a QR re-scan the output resumes by itself.
+
+## STT stream rotation
+
+Google ends a streaming session after ~305s; the agent reconnects immediately. The
+`io.EOF` the audio sender gets at that moment is expected (Debug). What the cut-off
+used to lose was the utterance in progress, which exists only as interim results:
+`stt.receive` now emits that last interim hypothesis as a final result when the
+stream ends with an error (not on audio EOF, not on shutdown).
 
 ## Translation model selection (measured 2026-07-26, historical)
 
